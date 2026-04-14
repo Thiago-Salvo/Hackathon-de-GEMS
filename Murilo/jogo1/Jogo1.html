@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space Animals</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        canvas {
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+            border: 2px solid #333;
+        }
+    </style>
+</head>
+<body>
+
+<script>
+/**
+ * ==========================================
+ * CONFIGURAÇÕES GERAIS E CONSTANTES
+ * ==========================================
+ * O código segue o princípio "Menos mecânicas, mais qualidade",
+ * dividindo a lógica em classes modulares para evitar funções gigantes.
+ */
+
+// Sequência exata de 25 animais (fases)
+const ANIMAL_SEQUENCE = [
+    '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', 
+    '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🦆', '🦉', 
+    '🦇', '🐺', '🐗', '🐴', '🦄'
+];
+
+const GAME_CONFIG = {
+    width: 800,
+    height: 600,
+    gravity: 1200,
+    flapVelocity: -450,
+    baseScrollSpeed: -250,
+    maxScrollSpeed: -550,
+    baseGapSize: 180,
+    minGapSize: 110,
+    laserSpeed: 800,
+    maxAmmo: 5
+};
+
+// Evita o menu de contexto ao clicar com o botão direito para pular
+document.addEventListener('contextmenu', event => event.preventDefault());
+
+/**
+ * ==========================================
+ * CENA 1: BOOT & ASSET GENERATION
+ * ==========================================
+ * Responsável por gerar as texturas dinamicamente para evitar
+ * problemas de arquivos corrompidos ou carregamento falho.
+ */
+class BootScene extends Phaser.Scene {
+    constructor() {
+        super({ key: 'BootScene' });
+    }
+
+    create() {
+        this.generatePipeTexture();
+        this.generateLaserTexture();
+        this.generatePlanetTextures();
+        this.generateStarTexture();
+        this.scene.start('MenuScene');
+    }
+
+    generatePipeTexture() {
+        const graphics = this.add.graphics();
+        const w = 80;
+        const h = 600;
+        
+        // Fundo cinza tecnológico
+        graphics.fillStyle(0x2a2a35, 1);
+        graphics.fillRect(0, 0, w, h);
+        
+        // Bordas e detalhes em azul ciano brilhante
+        graphics.lineStyle(4, 0x00e5ff, 1);
+        graphics.strokeRect(2, 2, w - 4, h - 4);
+        
+        // Linhas horizontais para dar sensação de tecnologia
+        graphics.lineStyle(2, 0x555566, 0.8);
+        for(let i = 20; i < h; i += 40) {
+            graphics.beginPath();
+            graphics.moveTo(5, i);
+            graphics.lineTo(w - 5, i);
+            graphics.strokePath();
+        }
+        graphics.generateTexture('pipe_tech', w, h);
+        graphics.destroy();
+    }
+
+    generateLaserTexture() {
+        const graphics = this.add.graphics();
+        graphics.fillStyle(0x00ffff, 1);
+        graphics.fillRect(0, 0, 40, 6);
+        graphics.fillStyle(0xffffff, 1);
+        graphics.fillRect(10, 1, 20, 4);
+        graphics.generateTexture('laser_beam', 40, 6);
+        graphics.destroy();
+    }
+
+    generatePlanetTextures() {
+        const colors = [0xff4444, 0x44ff44, 0x4444ff, 0xffff44, 0xff44ff];
+        colors.forEach((color, index) => {
+            const graphics = this.add.graphics();
+            graphics.fillStyle(color, 0.8);
+            graphics.fillCircle(50, 50, 50);
+            graphics.fillStyle(0x000000, 0.3);
+            graphics.fillCircle(30, 30, 10);
+            graphics.fillCircle(65, 45, 15);
+            graphics.fillCircle(40, 70, 8);
+            graphics.generateTexture(`planet_${index}`, 100, 100);
+            graphics.destroy();
+        });
+    }
+
+    generateStarTexture() {
+        const graphics = this.add.graphics();
+        graphics.fillStyle(0xffffff, 1);
+        graphics.fillCircle(2, 2, 2);
+        graphics.generateTexture('star_dot', 4, 4);
+        graphics.destroy();
+    }
+}
+
+/**
+ * ==========================================
+ * CENA 2: MENU PRINCIPAL
+ * ==========================================
+ */
+class MenuScene extends Phaser.Scene {
+    constructor() {
+        super({ key: 'MenuScene' });
+    }
+
+    create() {
+        this.add.rectangle(0, 0, 800, 600, 0x050510).setOrigin(0);
+        
+        // Criar estrelas no fundo
+        for(let i=0; i<100; i++){
+            let x = Phaser.Math.Between(0, 800);
+            let y = Phaser.Math.Between(0, 600);
+            let alpha = Phaser.Math.FloatBetween(0.2, 1);
+            this.add.image(x, y, 'star_dot').setAlpha(alpha);
+        }
+
+        const title = this.add.text(400, 200, 'SPACE ANIMALS', {
+            fontSize: '64px',
+            fontStyle: 'bold',
+            fill: '#00e5ff',
+            stroke: '#ffffff',
+            strokeThickness: 2,
+            shadow: { offsetX: 0, offsetY: 0, color: '#00e5ff', blur: 20, fill: true }
+        }).setOrigin(0.5);
+
+        this.tweens.add({
+            targets: title,
+            y: 180,
+            duration: 1500,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+
+        this.add.text(400, 350, 'INSTRUÇÕES:', { fontSize: '24px', fill: '#fff' }).setOrigin(0.5);
+        this.add.text(400, 390, 'PULAR: Espaço ou Mouse Direito', { fontSize: '20px', fill: '#ccc' }).setOrigin(0.5);
+        this.add.text(400, 420, 'ATIRAR: Tecla R ou Mouse Esquerdo', { fontSize: '20px', fill: '#ccc' }).setOrigin(0.5);
+
+        const startText = this.add.text(400, 520, 'Clique ou aperte Espaço para Iniciar', {
+            fontSize: '22px',
+            fill: '#ffff00'
+        }).setOrigin(0.5);
+
+        this.tweens.add({
+            targets: startText,
+            alpha: 0.2,
+            duration: 800,
+            yoyo: true,
+            repeat: -1
+        });
+
+        // Controles de início
+        this.input.keyboard.once('keydown-SPACE', () => this.startGame());
+        this.input.once('pointerdown', () => this.startGame());
+    }
+
+    startGame() {
+        this.scene.start('GameScene');
+        this.scene.start('UIScene'); // Scene Paralela para HUD
+    }
+}
+
+/**
+ * ==========================================
+ * CENA 3: HUD / UI SCENE (Evita sobreposição)
+ * ==========================================
+ */
+class UIScene extends Phaser.Scene {
+    constructor() {
+        super({ key: 'UIScene' });
+    }
+
+    create() {
+        // Garantindo que esta cena fique sempre por cima
+        this.scene.bringToTop();
+
+        this.scoreText = this.add.text(20, 20, 'SCORE: 0', {
+            fontSize: '32px',
+            fontStyle: 'bold',
+            fill: '#ffffff',
+            shadow: { offsetX: 2, offsetY: 2, color: '#000000', blur: 4, fill: true }
+        });
+
+        this.ammoText = this.add.text(20, 60, 'AMMO: 0/5', {
+            fontSize: '24px',
+            fontStyle: 'bold',
+            fill: '#ff4444',
+            shadow: { offsetX: 2, offsetY: 2, color: '#000000', blur: 4, fill: true }
+        });
+
+        this.phaseText = this.add.text(780, 20, 'FASE: 🐶', {
+            fontSize: '32px',
+            fontStyle: 'bold',
+            fill: '#ffffff',
+            shadow: { offsetX: 2, offsetY: 2, color: '#000000', blur: 4, fill: true }
+        }).setOrigin(1, 0);
+
+        // Ouve eventos emitidos pela GameScene
+        const gameScene = this.scene.get('GameScene');
+        gameScene.events.on('updateScore', this.updateScore, this);
+        gameScene.events.on('updateAmmo', this.updateAmmo, this);
+        gameScene.events.on('updatePhase', this.updatePhase, this);
+        gameScene.events.on('gameOver', this.showGameOver, this);
+    }
+
+    updateScore(score) {
+        this.scoreText.setText(`SCORE: ${score}`);
+        // Game Feel: Efeito de pulso no score
+        this.tweens.add({
+            targets: this.scoreText,
+            scaleX: 1.3, scaleY: 1.3,
+            duration: 100, yoyo: true
+        });
+    }
+
+    updateAmmo(ammo) {
+        this.ammoText.setText(`AMMO: ${ammo}/${GAME_CONFIG.maxAmmo}`);
+        this.ammoText.setFill(ammo > 0 ? '#00e5ff' : '#ff4444');
+    }
+
+    updatePhase(emoji) {
+        this.phaseText.setText(`FASE: ${emoji}`);
+        this.tweens.add({
+            targets: this.phaseText,
+            scaleX: 1.5, scaleY: 1.5,
+            duration: 200, yoyo: true
+        });
+    }
+
+    showGameOver() {
+        this.add.rectangle(400, 300, 800, 600, 0x000000, 0.7);
+        
+        this.add.text(400, 250, 'GAME OVER', {
+            fontSize: '64px', fontStyle: 'bold', fill: '#ff0000',
+            stroke: '#ffffff', strokeThickness: 4
+        }).setOrigin(0.5);
+
+        this.add.text(400, 350, 'Pressione ESPAÇO ou Clique para reiniciar', {
+            fontSize: '24px', fill: '#ffffff'
+        }).setOrigin(0.5);
+
+        // Aguarda um momento antes de permitir reiniciar para evitar double-click acidental
+        this.time.delayedCall(500, () => {
+            this.input.keyboard.once('keydown-SPACE', this.restartGame, this);
+            this.input.once('pointerdown', this.restartGame, this);
+        });
+    }
+
+    restartGame() {
+        const gameScene = this.scene.get('GameScene');
+        gameScene.scene.restart();
+        this.scene.restart();
+    }
+}
+
+/**
+ * ==========================================
+ * CENA 4: LÓGICA PRINCIPAL DO JOGO
+ * ==========================================
+ */
+class GameScene extends Phaser.Scene {
+    constructor() {
+        super({ key: 'GameScene' });
+    }
+
+    init() {
+        this.score = 0;
+        this.ammo = 0;
+        this.currentSpeed = GAME_CONFIG.baseScrollSpeed;
+        this.currentGap = GAME_CONFIG.baseGapSize;
+        this.isGameOver = false;
+        this.animalIndex = 0;
+        this.lastAmmoScoreGiven = 0; // Para rastrear a mecânica de arma
+    }
+
+    create() {
+        // 1. FUNDO E PARALLAX (Depths baixos)
+        this.createBackground();
+
+        // 2. GRUPOS DE FÍSICA (Gerenciamento de Objetos)
+        this.pipes = this.physics.add.group({ allowGravity: false, immovable: true });
+        this.scoreZones = this.physics.add.group({ allowGravity: false, immovable: true });
+        this.lasers = this.physics.add.group({ allowGravity: false });
+
+        // 3. JOGADOR (Depth Médio)
+        this.createPlayer();
+
+        // 4. COLISÕES E SOBREPOSIÇÕES
+        // Player morre ao bater no cano
+        this.physics.add.collider(this.player, this.pipes, this.triggerGameOver, null, this);
+        
+        // Player pontua ao passar na zona
+        this.physics.add.overlap(this.player, this.scoreZones, this.addScore, null, this);
+        
+        // Laser destrói o cano
+        this.physics.add.overlap(this.lasers, this.pipes, this.laserHitsPipe, null, this);
+
+        // 5. ENTRADAS DO JOGADOR
+        this.setupInputs();
+
+        // 6. GERADOR DE OBSTÁCULOS
+        this.spawnTimer = this.time.addEvent({
+            delay: 1500,
+            callback: this.spawnPipes,
+            callbackScope: this,
+            loop: true
+        });
+
+        // Dispara UI Inicial
+        this.events.emit('updateAmmo', this.ammo);
+        this.events.emit('updatePhase', ANIMAL_SEQUENCE[0]);
+    }
+
+    createBackground() {
+        this.add.rectangle(0, 0, 800, 600, 0x050510).setOrigin(0).setDepth(0);
+        
+        // Sistema de Estrelas Contínuas
+        this.stars = this.add.group();
+        for(let i=0; i<80; i++) {
+            let star = this.add.image(Phaser.Math.Between(0, 800), Phaser.Math.Between(0, 600), 'star_dot');
+            star.setDepth(1);
+            star.alpha = Phaser.Math.FloatBetween(0.3, 1);
+            this.physics.add.existing(star);
+            star.body.setVelocityX(Phaser.Math.Between(-20, -50));
+            this.stars.add(star);
+        }
+
+        // Sistema de Planetas passando devagar
+        this.planets = this.add.group();
+        this.time.addEvent({
+            delay: 5000,
+            callback: this.spawnPlanet,
+            callbackScope: this,
+            loop: true
+        });
+        // Planeta inicial
+        this.spawnPlanet();
+    }
+
+    spawnPlanet() {
+        if(this.isGameOver) return;
+        const pId = Phaser.Math.Between(0, 4);
+        const yPos = Phaser.Math.Between(100, 500);
+        let planet = this.add.image(850, yPos, `planet_${pId}`).setDepth(2);
+        this.physics.add.existing(planet);
+        planet.body.setVelocityX(-80);
+        planet.setScale(Phaser.Math.FloatBetween(0.5, 1.5));
+        this.planets.add(planet);
+    }
+
+    createPlayer() {
+        // Usamos Text para suportar os Emojis nativamente, sem problemas de asset.
+        this.player = this.add.text(200, 300, ANIMAL_SEQUENCE[0], { fontSize: '48px' });
+        this.player.setOrigin(0.5).setDepth(20);
+        
+        this.physics.add.existing(this.player);
+        this.player.body.setGravityY(GAME_CONFIG.gravity);
+        
+        // Ajuste fino do hitbox do emoji para colisões precisas
+        this.player.body.setSize(34, 34);
+        this.player.body.setOffset(7, 7);
+        this.player.body.setCollideWorldBounds(true);
+        this.player.body.onWorldBounds = true;
+
+        // Bater no teto ou chão = Morte
+        this.physics.world.on('worldbounds', (body) => {
+            if (body.gameObject === this.player) this.triggerGameOver();
+        });
+    }
+
+    setupInputs() {
+        // Input PULO: Espaço e Clique Direito
+        this.input.keyboard.on('keydown-SPACE', this.flap, this);
+        
+        // Input TIRO: R e Clique Esquerdo
+        this.input.keyboard.on('keydown-R', this.shoot, this);
+        
+        this.input.on('pointerdown', (pointer) => {
+            if (pointer.rightButtonDown()) {
+                this.flap();
+            } else if (pointer.leftButtonDown()) {
+                this.shoot();
+            }
+        });
+    }
+
+    flap() {
+        if (this.isGameOver) return;
+        
+        // Aplica velocidade imediata (Game Feel)
+        this.player.body.setVelocityY(GAME_CONFIG.flapVelocity);
+        
+        // Feedback visual da asa/salto
+        this.tweens.add({
+            targets: this.player,
+            scaleX: 1.2, scaleY: 0.8,
+            duration: 100,
+            yoyo: true
+        });
+    }
+
+    shoot() {
+        if (this.isGameOver || this.ammo <= 0) return;
+
+        this.ammo--;
+        this.events.emit('updateAmmo', this.ammo);
+
+        // Cria o projetil
+        let laser = this.lasers.create(this.player.x + 30, this.player.y, 'laser_beam');
+        laser.setDepth(15);
+        laser.setVelocityX(GAME_CONFIG.laserSpeed);
+        
+        // Feedback de recuo leve no player
+        this.player.x -= 5;
+        this.time.delayedCall(50, () => { if(this.player) this.player.x += 5; });
+    }
+
+    spawnPipes() {
+        if (this.isGameOver) return;
+
+        // Variação de altura do buraco
+        const minHeight = 50;
+        const maxHeight = 600 - this.currentGap - minHeight;
+        const topPipeHeight = Phaser.Math.Between(minHeight, maxHeight);
+
+        // Posicionamento base dos canos (ponto de origem é o centro, sprite é 80x600)
+        // Cano de cima
+        let topPipe = this.pipes.create(850, topPipeHeight - 300, 'pipe_tech').setDepth(10);
+        topPipe.body.setVelocityX(this.currentSpeed);
+        
+        // Cano de baixo
+        let bottomY = topPipeHeight + this.currentGap;
+        let bottomPipe = this.pipes.create(850, bottomY + 300, 'pipe_tech').setDepth(10);
+        bottomPipe.body.setVelocityX(this.currentSpeed);
+
+        // Zona de pontuação (Invisível, no meio)
+        let zone = this.scoreZones.create(850 + 40, 300, null); // +40 para passar dps do cano
+        zone.setSize(20, 600);
+        zone.setVisible(false);
+        zone.body.setVelocityX(this.currentSpeed);
+        zone.passed = false;
+    }
+
+    laserHitsPipe(laser, pipe) {
+        laser.destroy();
+        
+        // Efeito de explosão visual para Game Feel
+        this.createExplosion(pipe.x, laser.y);
+
+        // Destrói o cano atingido abrindo caminho
+        pipe.destroy();
+    }
+
+    createExplosion(x, y) {
+        // Partículas simples desenhadas em runtime
+        const rect = this.add.rectangle(x, y, 40, 40, 0x00e5ff);
+        this.tweens.add({
+            targets: rect,
+            scaleX: 2, scaleY: 2,
+            alpha: 0,
+            duration: 300,
+            onComplete: () => rect.destroy()
+        });
+    }
+
+    addScore(player, zone) {
+        if (!zone.passed) {
+            zone.passed = true;
+            this.score++;
+            this.events.emit('updateScore', this.score);
+            this.checkProgression();
+        }
+    }
+
+    checkProgression() {
+        // 1. Progressão de Fases / Animais (a cada 10 pontos)
+        let newIndex = Math.floor(this.score / 10);
+        if (newIndex !== this.animalIndex && newIndex < ANIMAL_SEQUENCE.length) {
+            this.animalIndex = newIndex;
+            this.player.setText(ANIMAL_SEQUENCE[this.animalIndex]);
+            this.events.emit('updatePhase', ANIMAL_SEQUENCE[this.animalIndex]);
+            
+            // Feedback de evolução
+            this.cameras.main.flash(200, 255, 255, 255);
+        }
+
+        // 2. Mecânica de Arma (Recebe arma a cada 15 pontos)
+        // Verifica se a pontuação atual é múltiplo de 15 e se já não entregamos
+        let ammoCycle = Math.floor(this.score / 15);
+        if (this.score > 0 && this.score % 15 === 0 && ammoCycle > this.lastAmmoScoreGiven) {
+            this.lastAmmoScoreGiven = ammoCycle;
+            this.ammo = GAME_CONFIG.maxAmmo;
+            this.events.emit('updateAmmo', this.ammo);
+            
+            // Game feel de PowerUp
+            let powerUpText = this.add.text(this.player.x, this.player.y - 40, 'RELOAD!', {
+                fontSize: '20px', fill: '#00ffff', fontStyle: 'bold'
+            }).setOrigin(0.5).setDepth(25);
+            
+            this.tweens.add({
+                targets: powerUpText,
+                y: powerUpText.y - 30,
+                alpha: 0,
+                duration: 1000,
+                onComplete: () => powerUpText.destroy()
+            });
+        }
+
+        // 3. Aumento contínuo de Dificuldade
+        // Velocidade base aumenta 2px por ponto
+        this.currentSpeed = Math.max(GAME_CONFIG.maxScrollSpeed, GAME_CONFIG.baseScrollSpeed - (this.score * 2));
+        
+        // Espaçamento diminui 0.5px por ponto
+        this.currentGap = Math.max(GAME_CONFIG.minGapSize, GAME_CONFIG.baseGapSize - (this.score * 0.5));
+
+        // Ajusta o timer de spawn baseado na velocidade para manter distância coerente
+        let delayReduction = (this.score * 10);
+        this.spawnTimer.delay = Math.max(800, 1500 - delayReduction);
+        
+        // Atualiza velocidade de quem já tá na tela
+        this.pipes.getChildren().forEach(p => p.body.setVelocityX(this.currentSpeed));
+        this.scoreZones.getChildren().forEach(z => z.body.setVelocityX(this.currentSpeed));
+    }
+
+    triggerGameOver() {
+        if (this.isGameOver) return;
+        this.isGameOver = true;
+
+        // Game Feel: Câmera Shake e Morte Física
+        this.cameras.main.shake(300, 0.02);
+        this.physics.pause();
+        
+        this.player.setTint(0xff0000); // Fica vermelho
+        
+        // Avisa a UI Scene para mostrar tela
+        this.events.emit('gameOver');
+    }
+
+    update() {
+        if (this.isGameOver) return;
+
+        // Rotação dinâmica baseada na velocidade Y (Game Feel)
+        let rotation = Phaser.Math.Clamp(this.player.body.velocity.y / 1000, -0.4, 0.4);
+        this.player.setRotation(rotation);
+
+        // Limpeza de memória (Object Pooling manual)
+        this.pipes.getChildren().forEach(pipe => {
+            if (pipe.x < -100) pipe.destroy();
+        });
+        
+        this.scoreZones.getChildren().forEach(zone => {
+            if (zone.x < -100) zone.destroy();
+        });
+
+        this.lasers.getChildren().forEach(laser => {
+            if (laser.x > 900) laser.destroy();
+        });
+
+        this.stars.getChildren().forEach(star => {
+            if(star.x < -10) {
+                star.x = 810;
+                star.y = Phaser.Math.Between(0, 600);
+            }
+        });
+
+        this.planets.getChildren().forEach(planet => {
+            if(planet.x < -100) planet.destroy();
+        });
+    }
+}
+
+/**
+ * ==========================================
+ * INICIALIZAÇÃO DO PHASER
+ * ==========================================
+ */
+const config = {
+    type: Phaser.AUTO,
+    width: 800,
+    height: 600,
+    physics: {
+        default: 'arcade',
+        arcade: { debug: false }
+    },
+    scene: [BootScene, MenuScene, GameScene, UIScene]
+};
+
+const game = new Phaser.Game(config);
+</script>
+
+</body>
+</html>

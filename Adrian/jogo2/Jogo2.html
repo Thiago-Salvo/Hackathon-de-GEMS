@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Invaders - Hype Edition</title>
+    <style>
+        :root {
+            --cor-primaria: #00f3ff;
+            --cor-secundaria: #ff00ea;
+            --cor-fundo: #050510;
+            --cor-texto: #ffffff;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--cor-fundo);
+            color: var(--cor-texto);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #container-jogo {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            box-shadow: 0 0 30px rgba(0, 243, 255, 0.2);
+            border: 2px solid rgba(0, 243, 255, 0.3);
+            border-radius: 10px;
+            overflow: hidden;
+            background: linear-gradient(to bottom, #020208, #0a0a20);
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .interface {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(5, 5, 16, 0.85);
+            backdrop-filter: blur(4px);
+            z-index: 10;
+            transition: opacity 0.3s ease;
+        }
+
+        .escondido {
+            display: none !important;
+        }
+
+        h1 {
+            font-size: 3rem;
+            color: var(--cor-primaria);
+            text-shadow: 0 0 10px var(--cor-primaria), 0 0 20px var(--cor-primaria);
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        p {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            text-align: center;
+            color: #ccc;
+            max-width: 80%;
+        }
+
+        .instrucoes {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 30px;
+        }
+
+        .instrucoes span {
+            display: block;
+            margin: 8px 0;
+        }
+
+        .destaque-azul { color: var(--cor-primaria); font-weight: bold; }
+        .destaque-rosa { color: var(--cor-secundaria); font-weight: bold; }
+        .destaque-amarelo { color: #ffea00; font-weight: bold; }
+
+        button {
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--cor-texto);
+            background: transparent;
+            border: 2px solid var(--cor-secundaria);
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            box-shadow: 0 0 15px rgba(255, 0, 234, 0.4);
+        }
+
+        button:hover {
+            background: var(--cor-secundaria);
+            box-shadow: 0 0 30px var(--cor-secundaria);
+            transform: scale(1.05);
+        }
+
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 1.5rem;
+            font-weight: bold;
+            z-index: 5;
+            pointer-events: none;
+            text-shadow: 0 0 5px rgba(0,0,0,0.8);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="container-jogo">
+        <canvas id="telaJogo" width="800" height="600"></canvas>
+        
+        <div id="hud" class="escondido">
+            <div id="display-pontuacao">Score: 0</div>
+            <div id="display-onda">Onda: 1</div>
+        </div>
+
+        <div id="tela-inicial" class="interface">
+            <h1>Neon Invaders</h1>
+            <p>Defenda a galáxia, destrua alienígenas e absorva seus poderes!</p>
+            <div class="instrucoes">
+                <span>🛸 <b>Setas</b> ou <b>A/D</b> para mover | 💥 <b>Espaço</b> para atirar</span>
+                <span><span class="destaque-amarelo">Orbe Amarela:</span> Melhora seu canhão (Até Nv. 3)</span>
+                <span><span class="destaque-azul">Orbe Azul:</span> Adiciona escudo protetor</span>
+            </div>
+            <button id="btn-iniciar">Iniciar Jogo</button>
+        </div>
+
+        <div id="tela-gameover" class="interface escondido">
+            <h1 style="color: var(--cor-secundaria); text-shadow: 0 0 10px var(--cor-secundaria), 0 0 20px var(--cor-secundaria);">Sinal Perdido</h1>
+            <p id="pontuacao-final">Sua pontuação: 0</p>
+            <button id="btn-reiniciar">Tentar Novamente</button>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURAÇÕES DO CANVAS E CONTEXTO ---
+        const canvas = document.getElementById('telaJogo');
+        const ctx = canvas.getContext('2d');
+
+        // --- ELEMENTOS DA UI ---
+        const telaInicial = document.getElementById('tela-inicial');
+        const telaGameover = document.getElementById('tela-gameover');
+        const hud = document.getElementById('hud');
+        const displayPontuacao = document.getElementById('display-pontuacao');
+        const displayOnda = document.getElementById('display-onda');
+        const btnIniciar = document.getElementById('btn-iniciar');
+        const btnReiniciar = document.getElementById('btn-reiniciar');
+        const displayPontuacaoFinal = document.getElementById('pontuacao-final');
+
+        // --- SISTEMA DE ÁUDIO (Web Audio API) ---
+        let contextoAudio;
+
+        function iniciarAudio() {
+            if (!contextoAudio) {
+                contextoAudio = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function tocarSomTiro() {
+            if (!contextoAudio) return;
+            const oscilador = contextoAudio.createOscillator();
+            const ganho = contextoAudio.createGain();
+            oscilador.type = 'square';
+            oscilador.frequency.setValueAtTime(880, contextoAudio.currentTime);
+            oscilador.frequency.exponentialRampToValueAtTime(110, contextoAudio.currentTime + 0.1);
+            ganho.gain.setValueAtTime(0.1, contextoAudio.currentTime);
+            ganho.gain.exponentialRampToValueAtTime(0.01, contextoAudio.currentTime + 0.1);
+            oscilador.connect(ganho);
+            ganho.connect(contextoAudio.destination);
+            oscilador.start();
+            oscilador.stop(contextoAudio.currentTime + 0.1);
+        }
+
+        function tocarSomExplosao() {
+            if (!contextoAudio) return;
+            const oscilador = contextoAudio.createOscillator();
+            const ganho = contextoAudio.createGain();
+            oscilador.type = 'sawtooth';
+            oscilador.frequency.setValueAtTime(100, contextoAudio.currentTime);
+            oscilador.frequency.exponentialRampToValueAtTime(10, contextoAudio.currentTime + 0.3);
+            ganho.gain.setValueAtTime(0.2, contextoAudio.currentTime);
+            ganho.gain.exponentialRampToValueAtTime(0.01, contextoAudio.currentTime + 0.3);
+            oscilador.connect(ganho);
+            ganho.connect(contextoAudio.destination);
+            oscilador.start();
+            oscilador.stop(contextoAudio.currentTime + 0.3);
+        }
+
+        function tocarSomUpgrade() {
+            if (!contextoAudio) return;
+            const oscilador = contextoAudio.createOscillator();
+            const ganho = contextoAudio.createGain();
+            oscilador.type = 'sine';
+            oscilador.frequency.setValueAtTime(440, contextoAudio.currentTime);
+            oscilador.frequency.linearRampToValueAtTime(880, contextoAudio.currentTime + 0.1);
+            oscilador.frequency.linearRampToValueAtTime(1320, contextoAudio.currentTime + 0.2);
+            ganho.gain.setValueAtTime(0.1, contextoAudio.currentTime);
+            ganho.gain.linearRampToValueAtTime(0, contextoAudio.currentTime + 0.3);
+            oscilador.connect(ganho);
+            ganho.connect(contextoAudio.destination);
+            oscilador.start();
+            oscilador.stop(contextoAudio.currentTime + 0.3);
+        }
+
+        // --- VARIÁVEIS DE ESTADO ---
+        let estadoJogo = 'start'; // 'start', 'jogando', 'gameover'
+        let animacaoFrameId;
+        let pontuacao = 0;
+        let ondaAtual = 1;
+        let estrelas = [];
+        const teclas = {};
+
+        // --- OBJETOS DO JOGO ---
+        const jogador = {
+            x: 400,
+            y: 530,
+            largura: 40,
+            altura: 40,
+            velocidade: 6,
+            cor: '#00f3ff',
+            nivelArma: 1, // 1: Simples, 2: Duplo, 3: Triplo
+            temEscudo: false,
+            tempoUltimoTiro: 0,
+            frequenciaTiro: 250 // milissegundos
+        };
+
+        let tiros = [];
+        let inimigos = [];
+        let upgrades = [];
+        let particulas = [];
+
+        // --- CONTROLES ---
+        window.addEventListener('keydown', (e) => {
+            teclas[e.code] = true;
+            // Previne a barra de espaço de rolar a página
+            if (e.code === 'Space') e.preventDefault();
+        });
+
+        window.addEventListener('keyup', (e) => {
+            teclas[e.code] = false;
+        });
+
+        // --- FUNÇÕES DE INICIALIZAÇÃO E CONTROLE ---
+        function criarEstrelas() {
+            estrelas = [];
+            for (let i = 0; i < 100; i++) {
+                estrelas.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    tamanho: Math.random() * 2,
+                    velocidade: Math.random() * 1.5 + 0.5
+                });
+            }
+        }
+
+        function atualizarDesenharEstrelas() {
+            ctx.fillStyle = '#ffffff';
+            estrelas.forEach(estrela => {
+                ctx.globalAlpha = Math.random() * 0.5 + 0.5;
+                ctx.beginPath();
+                ctx.arc(estrela.x, estrela.y, estrela.tamanho, 0, Math.PI * 2);
+                ctx.fill();
+                
+                estrela.y += estrela.velocidade;
+                if (estrela.y > canvas.height) {
+                    estrela.y = 0;
+                    estrela.x = Math.random() * canvas.width;
+                }
+            });
+            ctx.globalAlpha = 1;
+        }
+
+        function iniciarJogo() {
+            iniciarAudio();
+            telaInicial.classList.add('escondido');
+            telaGameover.classList.add('escondido');
+            hud.classList.remove('escondido');
+            
+            estadoJogo = 'jogando';
+            pontuacao = 0;
+            ondaAtual = 1;
+            atualizarHud();
+            
+            // Resetar jogador
+            jogador.x = canvas.width / 2 - jogador.largura / 2;
+            jogador.nivelArma = 1;
+            jogador.temEscudo = false;
+            
+            // Limpar arrays
+            tiros = [];
+            inimigos = [];
+            upgrades = [];
+            particulas = [];
+            
+            criarEstrelas();
+            gerarOnda();
+            loopJogo();
+        }
+
+        function gameOver() {
+            estadoJogo = 'gameover';
+            cancelAnimationFrame(animacaoFrameId);
+            hud.classList.add('escondido');
+            telaGameover.classList.remove('escondido');
+            displayPontuacaoFinal.innerText = `Sua pontuação: ${pontuacao}`;
+        }
+
+        function atualizarHud() {
+            displayPontuacao.innerText = `Score: ${pontuacao}`;
+            displayOnda.innerText = `Onda: ${ondaAtual}`;
+        }
+
+        function gerarOnda() {
+            const linhas = Math.min(3 + Math.floor(ondaAtual / 2), 6);
+            const colunas = 8;
+            const espacamentoX = 60;
+            const espacamentoY = 50;
+            const inicioX = (canvas.width - (colunas * espacamentoX)) / 2 + 20;
+
+            let velocidadeDescida = 0.5 + (ondaAtual * 0.15);
+
+            for (let i = 0; i < linhas; i++) {
+                for (let j = 0; j < colunas; j++) {
+                    inimigos.push({
+                        x: inicioX + (j * espacamentoX),
+                        y: -100 - (i * espacamentoY),
+                        largura: 30,
+                        altura: 30,
+                        velocidadeY: velocidadeDescida,
+                        tempoOscilacao: Math.random() * Math.PI * 2, // Para movimento senoidal
+                        hp: 1 + Math.floor(ondaAtual / 3)
+                    });
+                }
+            }
+        }
+
+        function atirar() {
+            const agora = Date.now();
+            if (agora - jogador.tempoUltimoTiro > jogador.frequenciaTiro) {
+                const xCentro = jogador.x + jogador.largura / 2;
+                
+                if (jogador.nivelArma === 1) {
+                    tiros.push({ x: xCentro - 2.5, y: jogador.y, largura: 5, altura: 15, velX: 0, velY: -10, cor: '#00f3ff' });
+                } else if (jogador.nivelArma === 2) {
+                    tiros.push({ x: xCentro - 15, y: jogador.y, largura: 5, altura: 15, velX: 0, velY: -10, cor: '#ffea00' });
+                    tiros.push({ x: xCentro + 10, y: jogador.y, largura: 5, altura: 15, velX: 0, velY: -10, cor: '#ffea00' });
+                } else {
+                    tiros.push({ x: xCentro - 2.5, y: jogador.y, largura: 5, altura: 15, velX: 0, velY: -10, cor: '#ff00ea' });
+                    tiros.push({ x: xCentro - 15, y: jogador.y, largura: 5, altura: 15, velX: -3, velY: -10, cor: '#ff00ea' });
+                    tiros.push({ x: xCentro + 10, y: jogador.y, largura: 5, altura: 15, velX: 3, velY: -10, cor: '#ff00ea' });
+                }
+                
+                tocarSomTiro();
+                jogador.tempoUltimoTiro = agora;
+            }
+        }
+
+        function soltarUpgrade(x, y) {
+            // 15% de chance de cair um upgrade
+            if (Math.random() < 0.15) {
+                const tipo = Math.random() < 0.5 ? 'arma' : 'escudo';
+                upgrades.push({
+                    x: x + 15, // Centro do inimigo
+                    y: y + 15,
+                    raio: 10,
+                    tipo: tipo,
+                    velocidade: 2
+                });
+            }
+        }
+
+        function criarExplosao(x, y, cor) {
+            for (let i = 0; i < 15; i++) {
+                particulas.push({
+                    x: x,
+                    y: y,
+                    velX: (Math.random() - 0.5) * 8,
+                    velY: (Math.random() - 0.5) * 8,
+                    raio: Math.random() * 3 + 1,
+                    cor: cor,
+                    vida: 1.0 // 100% de opacidade
+                });
+            }
+        }
+
+        // --- SISTEMA DE COLISÃO ---
+        function checarColisaoRetangulos(r1, r2) {
+            return (r1.x < r2.x + r2.largura &&
+                    r1.x + r1.largura > r2.x &&
+                    r1.y < r2.y + r2.altura &&
+                    r1.y + r1.altura > r2.y);
+        }
+
+        function checarColisaoCirculoRetangulo(circulo, retangulo) {
+            let pontoTesteX = circulo.x;
+            let pontoTesteY = circulo.y;
+
+            if (circulo.x < retangulo.x) pontoTesteX = retangulo.x;
+            else if (circulo.x > retangulo.x + retangulo.largura) pontoTesteX = retangulo.x + retangulo.largura;
+
+            if (circulo.y < retangulo.y) pontoTesteY = retangulo.y;
+            else if (circulo.y > retangulo.y + retangulo.altura) pontoTesteY = retangulo.y + retangulo.altura;
+
+            let distX = circulo.x - pontoTesteX;
+            let distY = circulo.y - pontoTesteY;
+            let distancia = Math.sqrt((distX*distX) + (distY*distY));
+
+            return distancia <= circulo.raio;
+        }
+
+        // --- ATUALIZAÇÃO LÓGICA ---
+        function atualizarJogo() {
+            // Movimentação do Jogador
+            if ((teclas['ArrowLeft'] || teclas['KeyA']) && jogador.x > 0) {
+                jogador.x -= jogador.velocidade;
+            }
+            if ((teclas['ArrowRight'] || teclas['KeyD']) && jogador.x < canvas.width - jogador.largura) {
+                jogador.x += jogador.velocidade;
+            }
+
+            // Atirar
+            if (teclas['Space']) {
+                atirar();
+            }
+
+            // Atualizar Tiros
+            for (let i = tiros.length - 1; i >= 0; i--) {
+                tiros[i].y += tiros[i].velY;
+                tiros[i].x += tiros[i].velX;
+                // Remover tiros que saíram da tela
+                if (tiros[i].y < 0 || tiros[i].x < 0 || tiros[i].x > canvas.width) {
+                    tiros.splice(i, 1);
+                }
+            }
+
+            // Atualizar Inimigos
+            for (let i = inimigos.length - 1; i >= 0; i--) {
+                let inimigo = inimigos[i];
+                inimigo.y += inimigo.velocidadeY;
+                inimigo.tempoOscilacao += 0.05;
+                inimigo.x += Math.sin(inimigo.tempoOscilacao) * 2; // Movimento senoidal lateral
+
+                // Game Over se os inimigos chegarem à base
+                if (inimigo.y + inimigo.altura > canvas.height) {
+                    gameOver();
+                    return;
+                }
+
+                // Colisão Inimigo com Jogador
+                if (checarColisaoRetangulos(inimigo, jogador)) {
+                    if (jogador.temEscudo) {
+                        jogador.temEscudo = false; // Gasta o escudo
+                        criarExplosao(inimigo.x + 15, inimigo.y + 15, '#00f3ff');
+                        tocarSomExplosao();
+                        inimigos.splice(i, 1);
+                        continue;
+                    } else {
+                        gameOver();
+                        return;
+                    }
+                }
+
+                // Colisão Tiro com Inimigo
+                for (let j = tiros.length - 1; j >= 0; j--) {
+                    if (checarColisaoRetangulos(tiros[j], inimigo)) {
+                        inimigo.hp--;
+                        tiros.splice(j, 1); // Remove tiro
+
+                        if (inimigo.hp <= 0) {
+                            criarExplosao(inimigo.x + 15, inimigo.y + 15, '#ff00ea');
+                            soltarUpgrade(inimigo.x, inimigo.y);
+                            tocarSomExplosao();
+                            inimigos.splice(i, 1); // Remove inimigo
+                            pontuacao += 10;
+                            atualizarHud();
+                        }
+                        break; // Sai do loop de tiros para este inimigo
+                    }
+                }
+            }
+
+            // Próxima onda
+            if (inimigos.length === 0) {
+                ondaAtual++;
+                atualizarHud();
+                gerarOnda();
+            }
+
+            // Atualizar Upgrades
+            for (let i = upgrades.length - 1; i >= 0; i--) {
+                let upg = upgrades[i];
+                upg.y += upg.velocidade;
+
+                if (checarColisaoCirculoRetangulo(upg, jogador)) {
+                    tocarSomUpgrade();
+                    if (upg.tipo === 'arma' && jogador.nivelArma < 3) {
+                        jogador.nivelArma++;
+                    } else if (upg.tipo === 'escudo') {
+                        jogador.temEscudo = true;
+                    } else if (upg.tipo === 'arma' && jogador.nivelArma === 3) {
+                        pontuacao += 50; // Bonus se já estiver nível máximo
+                        atualizarHud();
+                    }
+                    upgrades.splice(i, 1);
+                    continue;
+                }
+
+                if (upg.y - upg.raio > canvas.height) {
+                    upgrades.splice(i, 1);
+                }
+            }
+
+            // Atualizar Partículas (Explosões)
+            for (let i = particulas.length - 1; i >= 0; i--) {
+                let p = particulas[i];
+                p.x += p.velX;
+                p.y += p.velY;
+                p.vida -= 0.03; // Esmaecimento
+                if (p.vida <= 0) {
+                    particulas.splice(i, 1);
+                }
+            }
+        }
+
+        // --- RENDERIZAÇÃO ---
+        function desenharJogo() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            atualizarDesenharEstrelas();
+
+            // Desenhar Jogador (Nave)
+            ctx.save();
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = jogador.cor;
+            ctx.fillStyle = jogador.cor;
+            ctx.beginPath();
+            ctx.moveTo(jogador.x + jogador.largura / 2, jogador.y); // Ponta
+            ctx.lineTo(jogador.x + jogador.largura, jogador.y + jogador.altura); // Canto Direito
+            ctx.lineTo(jogador.x + jogador.largura / 2, jogador.y + jogador.altura - 10); // Meio inferior
+            ctx.lineTo(jogador.x, jogador.y + jogador.altura); // Canto Esquerdo
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+
+            // Desenhar Escudo
+            if (jogador.temEscudo) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(jogador.x + jogador.largura / 2, jogador.y + jogador.altura / 2, 35, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(0, 243, 255, 0.8)';
+                ctx.lineWidth = 3;
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#00f3ff';
+                ctx.stroke();
+                ctx.fillStyle = 'rgba(0, 243, 255, 0.1)';
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // Desenhar Inimigos
+            inimigos.forEach(inimigo => {
+                ctx.save();
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#ff00ea';
+                ctx.fillStyle = '#ff00ea';
+                // Desenho simples mas estiloso
+                ctx.beginPath();
+                ctx.moveTo(inimigo.x + inimigo.largura / 2, inimigo.y + inimigo.altura);
+                ctx.lineTo(inimigo.x + inimigo.largura, inimigo.y);
+                ctx.lineTo(inimigo.x, inimigo.y);
+                ctx.closePath();
+                ctx.fill();
+                // Detalhe interno
+                ctx.fillStyle = '#050510';
+                ctx.beginPath();
+                ctx.arc(inimigo.x + inimigo.largura/2, inimigo.y + inimigo.altura/3, 5, 0, Math.PI*2);
+                ctx.fill();
+                ctx.restore();
+            });
+
+            // Desenhar Tiros
+            tiros.forEach(tiro => {
+                ctx.save();
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = tiro.cor;
+                ctx.fillStyle = tiro.cor;
+                ctx.fillRect(tiro.x, tiro.y, tiro.largura, tiro.altura);
+                ctx.restore();
+            });
+
+            // Desenhar Upgrades
+            upgrades.forEach(upg => {
+                ctx.save();
+                const cor = upg.tipo === 'arma' ? '#ffea00' : '#00f3ff';
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = cor;
+                ctx.fillStyle = cor;
+                ctx.beginPath();
+                ctx.arc(upg.x, upg.y, upg.raio, 0, Math.PI * 2);
+                ctx.fill();
+                // Letra no meio
+                ctx.fillStyle = '#000';
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(upg.tipo === 'arma' ? 'W' : 'S', upg.x, upg.y);
+                ctx.restore();
+            });
+
+            // Desenhar Partículas
+            particulas.forEach(p => {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, p.vida);
+                ctx.fillStyle = p.cor;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = p.cor;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.raio, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+        }
+
+        // --- GAME LOOP PRINCIPAL ---
+        function loopJogo() {
+            if (estadoJogo === 'jogando') {
+                atualizarJogo();
+                desenharJogo();
+                animacaoFrameId = requestAnimationFrame(loopJogo);
+            }
+        }
+
+        // --- EVENTOS DE INTERFACE ---
+        btnIniciar.addEventListener('click', iniciarJogo);
+        btnReiniciar.addEventListener('click', iniciarJogo);
+
+        // Renderiza o fundo inicialmente para não ficar uma tela preta seca
+        criarEstrelas();
+        atualizarDesenharEstrelas();
+
+    </script>
+</body>
+</html>

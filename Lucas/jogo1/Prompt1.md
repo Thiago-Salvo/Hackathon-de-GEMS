@@ -1,0 +1,1 @@
+crie um jogo no estilo flap bird que possua inimigos que aparecem junto aos obstáculos, o player assim como esses inimigos deve ser capaz de artirar projeteis, ao morrer, eles devem dropar itens que ao certa quantidade ser coletada permitirá o jogador utilizar uma habilidade especial que deixará o tempo lento por alguns segundos

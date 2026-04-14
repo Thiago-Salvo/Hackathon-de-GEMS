@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conteúdo da Aba</title>
+    <style>
+        /* =========================================
+           1. ESTILO GERAL (Combinando com o painel)
+           ========================================= */
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100vh; /* Ocupa 100% da altura da janela do iframe */
+            background-color: #121214; /* Exatamente a mesma cor de fundo do painel principal */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            
+            /* O Flexbox aqui centraliza todo o conteúdo da página */
+            display: flex;
+            justify-content: center; /* Centraliza no meio horizontal (esquerda/direita) */
+            align-items: center;     /* Centraliza no meio vertical (cima/baixo) */
+        }
+
+        /* =========================================
+           2. CONTAINER DOS BOTÕES
+           ========================================= */
+        .container-botoes {
+            display: flex;
+            gap: 30px; /* Cria um espaço de 30 pixels entre os dois botões */
+        }
+
+        /* =========================================
+           3. ESTILO DOS BOTÕES (Tag <a> disfarçada)
+           ========================================= */
+        .botao-link {
+            background-color: #8257e5; /* Nosso roxo de destaque */
+            color: #ffffff; /* Texto branco */
+            text-decoration: none; /* Remove aquele sublinhado feio padrão dos links */
+            padding: 15px 30px; /* Espaçamento interno para deixar gordinho */
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 8px; /* Deixa as pontas arredondadas */
+            transition: background-color 0.3s ease, transform 0.2s; /* Prepara para animações */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); /* Uma sombrinha para dar profundidade */
+            text-align: center;
+            min-width: 150px; /* Tamanho mínimo para os botões ficarem iguais */
+        }
+
+        /* Efeitos ao passar o mouse por cima */
+        .botao-link:hover {
+            background-color: #996dff; /* Cor fica mais clara */
+            transform: translateY(-3px); /* Faz o botão dar um pulinho sutil para cima */
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container-botoes">
+        <a href="./jogo1/Visualização1.html" class="botao-link">Flap Bird</a>
+        <a href="./jogo2/Visualização2.html" class="botao-link">Space Invaders</a>
+    </div>
+
+</body>
+</html>

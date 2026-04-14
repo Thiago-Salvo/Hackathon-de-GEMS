@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meu Painel Dark Mode</title>
+    <style>
+        /* =========================================
+           1. ESTILOS GERAIS E DARK MODE
+           ========================================= */
+        :root {
+            /* Paleta de cores suave para o modo escuro */
+            --bg-principal: #121214;
+            --bg-abas: #202024;
+            --cor-texto: #e1e1e6;
+            --cor-destaque: #8257e5; /* Roxo bonito para dar destaque */
+            --cor-hover: #996dff;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100vh; /* Ocupa 100% da altura da tela */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-principal);
+            color: var(--cor-texto);
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* =========================================
+           2. BARRA DE NAVEGAÇÃO (BOTÕES DAS ABAS)
+           ========================================= */
+        .container-abas {
+            display: flex;
+            background-color: var(--bg-abas);
+            padding: 10px 10px 0 10px;
+            overflow-x: auto; /* Permite rolar pro lado se a tela for pequena */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Estilo individual de cada botão */
+        .botao-aba {
+            background-color: transparent;
+            color: var(--cor-texto);
+            border: none;
+            outline: none;
+            padding: 12px 20px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            border-top-left-radius: 8px; /* Cantos arredondados em cima */
+            border-top-right-radius: 8px;
+            transition: 0.3s; /* Animação suave */
+            margin-right: 5px;
+        }
+
+        /* Efeito ao passar o mouse */
+        .botao-aba:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Estilo da aba que está selecionada no momento */
+        .botao-aba.ativo {
+            background-color: var(--bg-principal);
+            color: var(--cor-destaque);
+            border-bottom: 3px solid var(--cor-destaque);
+        }
+
+        /* =========================================
+           3. ÁREA DE CONTEÚDO (IFRAMES)
+           ========================================= */
+        .conteudo-aba {
+            flex-grow: 1; /* Faz o conteúdo ocupar todo o resto da tela */
+            display: none; /* Esconde todas as abas por padrão */
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Mostra apenas a aba que tiver a classe 'ativo' */
+        .conteudo-aba.ativo {
+            display: block;
+        }
+
+        /* Estilo do iframe (janela para os seus arquivos) */
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none; /* Remove a borda feia padrão do iframe */
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container-abas">
+        <button class="botao-aba ativo" onclick="abrirAba(event, 'aba1')">Adrian</button>
+        <button class="botao-aba" onclick="abrirAba(event, 'aba2')">Alex</button>
+        <button class="botao-aba" onclick="abrirAba(event, 'aba3')">Julio</button>
+        <button class="botao-aba" onclick="abrirAba(event, 'aba4')">Lucas</button>
+        <button class="botao-aba" onclick="abrirAba(event, 'aba5')">Luiz</button>
+        <button class="botao-aba" onclick="abrirAba(event, 'aba6')">Marcelo</button>
+        <button class="botao-aba" onclick="abrirAba(event, 'aba7')">Matheus</button>
+        <button class="botao-aba" onclick="abrirAba(event, 'aba8')">Murilo</button>
+        <button class="botao-aba" onclick="abrirAba(event, 'aba9')">Nicolas</button>
+        <button class="botao-aba" onclick="abrirAba(event, 'aba10')">Theo</button>
+        <button class="botao-aba" onclick="abrirAba(event, 'aba11')">Thiago</button>
+    </div>
+
+    <div id="aba1" class="conteudo-aba ativo">
+        <iframe src="./Adrian/Jogos.html"></iframe>
+    </div>
+    <div id="aba2" class="conteudo-aba">
+        <iframe src="./Alex/Jogos.html"></iframe>
+    </div>
+    <div id="aba3" class="conteudo-aba">
+        <iframe src="./Julio/Jogos.html"></iframe>
+    </div>
+    <div id="aba4" class="conteudo-aba">
+        <iframe src="./Lucas/Jogos.html"></iframe>
+    </div>
+    <div id="aba5" class="conteudo-aba">
+        <iframe src="./Luiz/Jogos.html"></iframe>
+    </div>
+    <div id="aba6" class="conteudo-aba">
+        <iframe src="./Marcelo/Jogos.html"></iframe>
+    </div>
+    <div id="aba7" class="conteudo-aba">
+        <iframe src="./Matheus/Jogos.html"></iframe>
+    </div>
+    <div id="aba8" class="conteudo-aba">
+        <iframe src="./Murilo/Jogos.html"></iframe>
+    </div>
+    <div id="aba9" class="conteudo-aba">
+        <iframe src="./Nicolas/Jogos.html"></iframe>
+    </div>
+    <div id="aba10" class="conteudo-aba">
+        <iframe src="./Theo/Jogos.html"></iframe>
+    </div>
+    <div id="aba11" class="conteudo-aba">
+        <iframe src="./Tiago/Jogos.html"></iframe>
+    </div>
+
+    <script>
+        function abrirAba(evento, idDaAba) {
+            // Passo 1: Pegar todos os conteúdos e esconder
+            let conteudos = document.getElementsByClassName("conteudo-aba");
+            for (let i = 0; i < conteudos.length; i++) {
+                conteudos[i].classList.remove("ativo");
+            }
+
+            // Passo 2: Pegar todos os botões e remover a marcação de selecionado
+            let botoes = document.getElementsByClassName("botao-aba");
+            for (let i = 0; i < botoes.length; i++) {
+                botoes[i].classList.remove("ativo");
+            }
+
+            // Passo 3: Mostrar a aba específica que foi clicada
+            document.getElementById(idDaAba).classList.add("ativo");
+            
+            // Passo 4: Marcar o botão clicado como ativo (para mudar a cor)
+            evento.currentTarget.classList.add("ativo");
+        }
+    </script>
+</body>
+</html>

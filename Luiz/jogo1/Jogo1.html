@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Cyber Dash</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="hud" class="hidden">
+            <div class="top-bar">
+                <div class="hp-container">
+                    <span class="label">SYS_HP:</span>
+                    <div id="hp-bar"><div id="hp-fill"></div></div>
+                </div>
+                <div class="score-container">
+                    <span class="label">SCORE:</span>
+                    <span id="score">0</span>
+                </div>
+            </div>
+            <div class="dash-container">
+                <span class="label">DASH</span>
+                <div id="dash-bar"><div id="dash-fill"></div></div>
+            </div>
+        </div>
+
+        <div id="ui-layer">
+            <div id="start-screen" class="screen">
+                <h1 class="glitch" data-text="CYBER DASH">CYBER DASH</h1>
+                <p>Otimize sua rota. Evite a destruição.</p>
+                <div class="instructions">
+                    <p>[ESPAÇO / CLIQUE] = Subir</p>
+                    <p>[SHIFT / BOTÃO] = Dash</p>
+                    <p>[P] = Pause</p>
+                </div>
+                <button id="btn-start" class="neon-button">INICIAR SEQUÊNCIA</button>
+                <p class="high-score">High Score: <span id="hi-score-display">0</span></p>
+            </div>
+
+            <div id="pause-screen" class="screen hidden">
+                <h2 class="neon-text">SISTEMA PAUSADO</h2>
+                <button id="btn-resume" class="neon-button">CONTINUAR</button>
+                <button id="btn-restart-pause" class="neon-button">REINICIAR</button>
+            </div>
+
+            <div id="game-over-screen" class="screen hidden">
+                <h1 class="glitch error" data-text="SYSTEM FAILURE">SYSTEM FAILURE</h1>
+                <div class="stats">
+                    <p>Score Final: <span id="final-score">0</span></p>
+                    <p>High Score: <span id="final-hi-score">0</span></p>
+                </div>
+                <button id="btn-restart" class="neon-button">TENTAR NOVAMENTE</button>
+                <button id="btn-menu" class="neon-button">MENU PRINCIPAL</button>
+            </div>
+        </div>
+
+        <div id="mobile-controls">
+            <button id="btn-mobile-dash" class="mobile-btn">DASH</button>
+            <button id="btn-mobile-jump" class="mobile-btn">SUBIR</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Neon Invaders: Polarity Shift</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        :root {
+            --bg-color: #050510;
+            --cyan-light: #6FFFE9;
+            --cyan-med: #5BC0BE;
+            --magenta-light: #FF6FE1;
+            --magenta-med: #C05B9E;
+            --ui-text: #FFFFFF;
+        }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: var(--bg-color); overflow: hidden;
+            font-family: 'Press Start 2P', monospace; user-select: none;
+            touch-action: none;
+        }
+        #gameCanvas {
+            display: block; width: 100%; height: 100%; object-fit: contain;
+            image-rendering: pixelated;
+        }
+        #uiLayer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; display: flex; flex-direction: column;
+        }
+        .screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            background: rgba(5, 5, 16, 0.9); pointer-events: auto;
+            transition: opacity 0.3s; z-index: 10;
+        }
+        .hidden { opacity: 0; pointer-events: none; }
+        h1 { font-size: 3vw; text-align: center; text-shadow: 4px 4px 0px var(--magenta-med); margin-bottom: 20px; color: var(--cyan-light); }
+        .info-box { background: rgba(255,255,255,0.05); border: 2px solid var(--cyan-med); padding: 20px; border-radius: 10px; width: 60%; text-align: center; line-height: 1.8; font-size: 1.2vw; color: #ddd; margin-bottom: 30px; }
+        .highlight-c { color: var(--cyan-light); }
+        .highlight-m { color: var(--magenta-light); }
+        button {
+            padding: 20px 40px; font-size: 1.5vw; font-family: inherit; color: var(--bg-color);
+            background: linear-gradient(90deg, var(--cyan-light), var(--magenta-light));
+            border: none; border-radius: 5px; cursor: pointer; text-transform: uppercase;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.3); transition: transform 0.1s, filter 0.1s;
+            pointer-events: auto;
+        }
+        button:hover { transform: scale(1.1); filter: brightness(1.2); }
+        button:active { transform: scale(0.95); }
+        #hud {
+            position: absolute; top: 0; left: 0; width: 100%; padding: 20px;
+            box-sizing: border-box; display: flex; justify-content: space-between;
+            color: var(--ui-text); font-size: 1.5vw; text-shadow: 2px 2px 0 #000; z-index: 5;
+        }
+        .hud-bar-container { width: 30%; height: 20px; border: 2px solid #fff; background: #000; position: relative; }
+        #healthBar { height: 100%; background: #2ecc71; width: 100%; transition: width 0.2s; }
+        #energyBar { height: 100%; background: var(--cyan-light); width: 0%; transition: width 0.2s, background-color 0.2s; }
+        .scanlines {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 4px, 3px 100%; pointer-events: none; z-index: 20;
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="gameCanvas" width="1280" height="720"></canvas>
+<div class="scanlines"></div>
+
+<div id="uiLayer">
+    <div id="hud" class="hidden">
+        <div>
+            <div>SCORE: <span id="scoreDisplay">000000</span></div>
+            <div style="margin-top:10px; font-size: 1vw;">WAVE: <span id="waveDisplay">1</span>/3</div>
+        </div>
+        <div style="width: 40%; display:flex; flex-direction: column; align-items: flex-end; gap: 10px;">
+            <div class="hud-bar-container"><div id="healthBar"></div></div>
+            <div class="hud-bar-container"><div id="energyBar"></div></div>
+        </div>
+    </div>
+
+    <div id="startScreen" class="screen">
+        <h1>NEON INVADERS<br><span style="font-size: 2vw; color: white;">POLARITY SHIFT</span></h1>
+        <div class="info-box">
+            <p><strong>OBJETIVO:</strong> Sobreviva a 3 ondas e destrua a Nave-Mãe.</p>
+            <p><strong>INOVAÇÃO (Polaridade):</strong> Altere a cor da sua nave para <span class="highlight-c">CYAN</span> ou <span class="highlight-m">MAGENTA</span>.</p>
+            <p>- Absorva tiros da <strong>MESMA COR</strong> para recarregar sua energia (Especial).<br>
+               - Cause <strong>DOBRO DE DANO</strong> em inimigos da cor oposta.<br>
+               - Tiros da cor oposta causam dano fatal!</p>
+            <p><strong>CONTROLES:</strong><br>[SETAS] / [A/D] - Mover | [ESPAÇO] - Atirar<br>[SHIFT] - Trocar Polaridade | [ENTER] - Especial</p>
+        </div>
+        <button id="btnStart">INICIAR SISTEMA</button>
+    </div>
+
+    <div id="gameOverScreen" class="screen hidden">
+        <h1 id="endTitle" style="color: #ff3333;">SISTEMA FALHOU</h1>
+        <p id="endMessage" class="info-box" style="border-color: #ff3333;">Sua integridade estrutural foi comprometida.</p>
+        <h2 style="color: white; margin-bottom: 30px;">SCORE: <span id="finalScore">0</span></h2>
+        <button id="btnRestart">REINICIAR</button>
+    </div>
+</div>
+
+<script>
+/**
+ * NEON INVADERS: POLARITY SHIFT - CORE ENGINE
+ * Developer: Criador de jogos insano 3000 .net
+ * Architecture: Data-Driven, State-Machine, Procedural Generation, WebAudio API
+ */
+
+// ==========================================
+// 1. DATA-DRIVEN CONSTANTS & CONFIGURATION
+// ==========================================
+const CONFIG = {
+    CANVAS_W: 1280, CANVAS_H: 720,
+    FPS: 60,
+    PLAYER_SPEED: 7, PLAYER_FIRE_RATE: 12, PLAYER_MAX_HP: 100,
+    GRAVITY: 0,
+    COLORS: {
+        BG: '#050510', GRID: '#111122',
+        CYAN:   ['#000000', '#006B8F', '#00BFFF', '#6FFFE9'], // Outline, Shadow, Medium, Light
+        MAGENTA:['#000000', '#6B3A5A', '#C05B9E', '#FF6FE1'],
+        WHITE:  ['#000000', '#888888', '#CCCCCC', '#FFFFFF'],
+        RED:    ['#000000', '#8B0000', '#FF0000', '#FF6666']
+    },
+    POLARITY: { CYAN: 0, MAGENTA: 1 },
+    STATES: { MENU: 0, PLAYING: 1, GAMEOVER: 2, VICTORY: 3, WAVE_TRANSITION: 4 }
+};
+
+// Procedural Sprite Matrices (0: Empty, 1: Outline, 2: Shadow, 3: Medium, 4: Light)
+const SPRITE_DATA = {
+    PLAYER: [
+        [0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0],
+        [0,0,0,0,0,0,1,4,4,1,0,0,0,0,0,0],
+        [0,0,0,0,0,1,4,4,4,4,1,0,0,0,0,0],
+        [0,0,0,0,1,2,3,4,4,3,2,1,0,0,0,0],
+        [0,0,0,0,1,3,3,4,4,3,3,1,0,0,0,0],
+        [0,0,0,1,2,3,3,4,4,3,3,2,1,0,0,0],
+        [0,0,1,2,2,3,3,3,3,3,3,2,2,1,0,0],
+        [0,1,2,2,1,1,3,3,3,3,1,1,2,2,1,0],
+        [1,2,2,1,4,4,1,3,3,1,4,4,1,2,2,1],
+        [1,3,2,1,4,4,1,2,2,1,4,4,1,2,3,1],
+        [1,3,3,1,1,1,1,2,2,1,1,1,1,3,3,1],
+        [1,3,3,3,3,3,2,2,2,2,3,3,3,3,3,1],
+        [0,1,1,1,3,3,2,1,1,2,3,3,1,1,1,0],
+        [0,0,0,1,2,2,1,0,0,1,2,2,1,0,0,0],
+        [0,0,0,0,1,1,0,0,0,0,1,1,0,0,0,0]
+    ],
+    ENEMY_CRAB: [
+        [0,0,1,1,0,0,0,0,0,0,0,0,1,1,0,0],
+        [0,1,3,3,1,0,0,0,0,0,0,1,3,3,1,0],
+        [1,3,3,4,3,1,1,1,1,1,1,3,4,3,3,1],
+        [1,3,4,4,3,3,3,3,3,3,3,3,4,4,3,1],
+        [1,4,4,3,3,1,1,3,3,1,1,3,3,4,4,1],
+        [1,3,3,3,1,4,4,1,1,4,4,1,3,3,3,1],
+        [0,1,3,3,1,4,4,1,1,4,4,1,3,3,1,0],
+        [0,0,1,3,3,1,1,3,3,1,1,3,3,1,0,0],
+        [0,0,1,2,3,3,3,3,3,3,3,3,2,1,0,0],
+        [0,1,2,2,1,1,1,1,1,1,1,1,2,2,1,0],
+        [1,2,2,1,0,0,0,0,0,0,0,0,1,2,2,1],
+        [1,2,1,0,0,1,1,0,0,1,1,0,0,1,2,1],
+        [1,1,0,0,1,2,2,1,1,2,2,1,0,0,1,1]
+    ],
+    BOSS: [ // 24x24 simplification
+        [0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0],
+        [0,0,0,0,0,0,1,1,3,3,3,3,3,3,3,3,1,1,0,0,0,0,0,0],
+        [0,0,0,0,1,1,3,3,4,4,4,4,4,4,4,4,3,3,1,1,0,0,0,0],
+        [0,0,0,1,3,3,4,4,4,1,1,1,1,1,1,4,4,4,3,3,1,0,0,0],
+        [0,0,1,3,4,4,1,1,1,4,4,4,4,4,4,1,1,1,4,4,3,1,0,0],
+        [0,1,3,4,1,1,4,4,4,4,3,3,3,3,4,4,4,4,1,1,4,3,1,0],
+        [1,3,4,1,4,4,4,3,3,3,2,2,2,2,3,3,3,4,4,4,1,4,3,1],
+        [1,4,1,4,4,3,3,2,2,1,1,1,1,1,1,2,2,3,3,4,4,1,4,1],
+        [1,4,1,4,3,2,2,1,1,4,4,4,4,4,4,1,1,2,2,3,4,1,4,1],
+        [1,3,1,3,2,1,1,4,4,4,1,1,1,1,4,4,4,1,1,2,3,1,3,1],
+        [1,3,3,2,1,4,4,4,1,1,2,2,2,2,1,1,4,4,4,1,2,3,3,1],
+        [1,2,2,1,4,4,1,1,2,2,3,3,3,3,2,2,1,1,4,4,1,2,2,1],
+        [1,2,2,1,4,4,1,2,2,3,4,4,4,4,3,2,2,1,4,4,1,2,2,1],
+        [0,1,1,1,3,3,1,2,3,4,4,1,1,4,4,3,2,1,3,3,1,1,1,0],
+        [0,0,0,1,3,2,1,2,3,4,1,4,4,1,4,3,2,1,2,3,1,0,0,0],
+        [0,0,0,1,2,2,1,2,3,4,1,4,4,1,4,3,2,1,2,2,1,0,0,0],
+        [0,0,0,1,2,1,0,1,2,3,4,4,4,4,3,2,1,0,1,2,1,0,0,0],
+        [0,0,0,1,1,0,0,0,1,2,2,3,3,2,2,1,0,0,0,1,1,0,0,0],
+        [0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0]
+    ]
+};
+
+const WAVES = [
+    { text: "INICIANDO VARREDURA", enemies: [{type: 'CRAB', count: 10, rows: 2, cols: 5, hp: 10, spd: 1.5, pattern: 'ZIGZAG'}] },
+    { text: "FORÇAS ESQUADRÃO", enemies: [{type: 'CRAB', count: 16, rows: 4, cols: 4, hp: 20, spd: 2, pattern: 'CIRCLE'}] },
+    { text: "A NAVE MÃE", enemies: [{type: 'BOSS', count: 1, rows: 1, cols: 1, hp: 500, spd: 3, pattern: 'HOVER'}] }
+];
+
+// ==========================================
+// 2. PROCEDURAL GRAPHICS GENERATOR
+// ==========================================
+const GraphicsSys = {
+    cache: {},
+    createPattern: function() {
+        const c = document.createElement('canvas');
+        c.width = 64; c.height = 64;
+        const ctx = c.getContext('2d');
+        ctx.strokeStyle = CONFIG.COLORS.GRID;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(0,0,64,64);
+        return c;
+    },
+    generateSprite: function(name, matrix, palette, scale = 3) {
+        if (this.cache[name]) return this.cache[name];
+        const canvas = document.createElement('canvas');
+        canvas.width = matrix[0].length * scale;
+        canvas.height = matrix.length * scale;
+        const ctx = canvas.getContext('2d');
+        
+        for (let y = 0; y < matrix.length; y++) {
+            for (let x = 0; x < matrix[y].length; x++) {
+                let colIdx = matrix[y][x];
+                if (colIdx > 0) {
+                    ctx.fillStyle = palette[colIdx - 1];
+                    ctx.fillRect(x * scale, y * scale, scale, scale);
+                    // 16-bit checkerboard dithering for medium/shadow transition
+                    if ((x+y)%2===0 && colIdx === 3 && x>0) {
+                        ctx.fillStyle = palette[1]; // shadow dot
+                        ctx.fillRect(x*scale, y*scale, scale/2, scale/2);
+                    }
+                }
+            }
+        }
+        this.cache[name] = canvas;
+        return canvas;
+    },
+    preRender: function() {
+        this.generateSprite('PLAYER_C', SPRITE_DATA.PLAYER, CONFIG.COLORS.CYAN, 4);
+        this.generateSprite('PLAYER_M', SPRITE_DATA.PLAYER, CONFIG.COLORS.MAGENTA, 4);
+        this.generateSprite('CRAB_C', SPRITE_DATA.ENEMY_CRAB, CONFIG.COLORS.CYAN, 4);
+        this.generateSprite('CRAB_M', SPRITE_DATA.ENEMY_CRAB, CONFIG.COLORS.MAGENTA, 4);
+        this.generateSprite('BOSS_C', SPRITE_DATA.BOSS, CONFIG.COLORS.CYAN, 6);
+        this.generateSprite('BOSS_M', SPRITE_DATA.BOSS, CONFIG.COLORS.MAGENTA, 6);
+        this.bgPattern = this.createPattern();
+    }
+};
+
+// ==========================================
+// 3. SYNTHETIC AUDIO SYSTEM (Web Audio API)
+// ==========================================
+const AudioSys = {
+    ctx: null, initialized: false, masterGain: null,
+    bgmOscillators: [], bgmInterval: null,
+    
+    init: function() {
+        if (this.initialized) return;
+        try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            this.ctx = new AudioContext();
+            this.masterGain = this.ctx.createGain();
+            this.masterGain.gain.value = 0.3;
+            this.masterGain.connect(this.ctx.destination);
+            this.initialized = true;
+            this.startBGM();
+        } catch(e) { console.warn("Audio Context Failed", e); }
+    },
+    
+    playTone: function(freq, type, duration, volMod=1) {
+        if (!this.ctx) return;
+        let osc = this.ctx.createOscillator();
+        let gain = this.ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+        gain.gain.setValueAtTime(volMod, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+        osc.start(); osc.stop(this.ctx.currentTime + duration);
+    },
+    
+    sfxShoot: function(polarity) { this.playTone(polarity === CONFIG.POLARITY.CYAN ? 880 : 440, 'square', 0.1, 0.2); },
+    sfxHit: function() { this.playTone(150, 'sawtooth', 0.2, 0.5); },
+    sfxExplode: function() { this.playTone(100, 'square', 0.5, 0.8); setTimeout(()=>this.playTone(50, 'sawtooth', 0.5, 0.8), 100); },
+    sfxSwap: function() { this.playTone(1200, 'sine', 0.1, 0.3); setTimeout(()=>this.playTone(1600, 'sine', 0.1, 0.3), 50); },
+    sfxAbsorb: function() { this.playTone(600, 'sine', 0.2, 0.4); },
+    sfxSpecial: function() { this.playTone(200, 'sawtooth', 1.0, 0.8); this.playTone(800, 'square', 1.0, 0.4); },
+    
+    startBGM: function() {
+        if (!this.ctx) return;
+        const sequence = [220, 220, 440, 330, 220, 220, 550, 440]; // Synthwave bassline
+        let step = 0;
+        this.bgmInterval = setInterval(() => {
+            if (GameEngine.state !== CONFIG.STATES.PLAYING && GameEngine.state !== CONFIG.STATES.WAVE_TRANSITION) return;
+            let freq = sequence[step % sequence.length];
+            this.playTone(freq, 'sawtooth', 0.15, 0.15);
+            step++;
+        }, 200);
+    },
+    stopBGM: function() { clearInterval(this.bgmInterval); }
+};
+
+// ==========================================
+// 4. GAME ENTITIES (Data-Driven Classes)
+// ==========================================
+class Particle {
+    constructor(x, y, color, speed, size, life) {
+        this.x = x; this.y = y; this.color = color;
+        this.vx = (Math.random() - 0.5) * speed;
+        this.vy = (Math.random() - 0.5) * speed;
+        this.size = size; this.life = life; this.maxLife = life;
+    }
+    update() { this.x += this.vx; this.y += this.vy; this.life--; }
+    draw(ctx) {
+        ctx.globalAlpha = Math.max(0, this.life / this.maxLife);
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+        ctx.globalAlpha = 1.0;
+    }
+}
+
+class FloatingText {
+    constructor(x, y, text, color) {
+        this.x = x; this.y = y; this.text = text; this.color = color;
+        this.life = 60; this.vy = -1;
+    }
+    update() { this.y += this.vy; this.life--; }
+    draw(ctx) {
+        ctx.globalAlpha = Math.max(0, this.life / 60);
+        ctx.fillStyle = this.color;
+        ctx.font = "16px 'Press Start 2P'";
+        ctx.fillText(this.text, this.x, this.y);
+        ctx.globalAlpha = 1.0;
+    }
+}
+
+class Projectile {
+    constructor(x, y, vy, polarity, isEnemy, isSpecial = false) {
+        this.x = x; this.y = y; this.vy = vy;
+        this.polarity = polarity; this.isEnemy = isEnemy;
+        this.width = isSpecial ? 40 : 8;
+        this.height = isSpecial ? 60 : 20;
+        this.active = true;
+        this.isSpecial = isSpecial;
+    }
+    update() { this.y += this.vy; }
+    draw(ctx) {
+        ctx.fillStyle = this.polarity === CONFIG.POLARITY.CYAN ? CONFIG.COLORS.CYAN[3] : CONFIG.COLORS.MAGENTA[3];
+        ctx.shadowBlur = 15; ctx.shadowColor = ctx.fillStyle;
+        ctx.fillRect(this.x - this.width/2, this.y - this.height/2, this.width, this.height);
+        ctx.shadowBlur = 0;
+    }
+}
+
+class Entity {
+    constructor(x, y, hp, polarity) {
+        this.x = x; this.y = y; this.hp = hp; this.maxHp = hp;
+        this.polarity = polarity; this.active = true;
+        this.width = 64; this.height = 64; // Default bounds
+    }
+    getAABB() { return { x: this.x - this.width/2 + 10, y: this.y - this.height/2 + 10, w: this.width - 20, h: this.height - 20 }; }
+    takeDamage(amount, projPolarity) {
+        let mult = (this.polarity !== projPolarity) ? 2.0 : 0.5; // Opposites deal double, sames deal half
+        let dmg = amount * mult;
+        this.hp -= dmg;
+        if(this.hp <= 0) this.active = false;
+        return dmg;
+    }
+}
+
+class Player extends Entity {
+    constructor() {
+        super(CONFIG.CANVAS_W/2, CONFIG.CANVAS_H - 80, CONFIG.PLAYER_MAX_HP, CONFIG.POLARITY.CYAN);
+        this.energy = 0; this.maxEnergy = 100;
+        this.fireCooldown = 0; this.vx = 0;
+        this.width = 64; this.height = 60;
+    }
+    update(keys) {
+        if (keys['ArrowLeft'] || keys['KeyA']) this.vx = -CONFIG.PLAYER_SPEED;
+        else if (keys['ArrowRight'] || keys['KeyD']) this.vx = CONFIG.PLAYER_SPEED;
+        else this.vx *= 0.8; // Friction
+        
+        this.x += this.vx;
+        if (this.x < this.width/2) this.x = this.width/2;
+        if (this.x > CONFIG.CANVAS_W - this.width/2) this.x = CONFIG.CANVAS_W - this.width/2;
+        
+        if (this.fireCooldown > 0) this.fireCooldown--;
+        
+        if (keys['Space'] && this.fireCooldown === 0) {
+            GameEngine.projectiles.push(new Projectile(this.x, this.y - 30, -15, this.polarity, false));
+            AudioSys.sfxShoot(this.polarity);
+            this.fireCooldown = CONFIG.PLAYER_FIRE_RATE;
+        }
+        
+        if (keys['Enter'] && this.energy >= this.maxEnergy) {
+            // SPECIAL ATTACK
+            for(let i=-2; i<=2; i++) {
+                GameEngine.projectiles.push(new Projectile(this.x + i*30, this.y - 40, -10, this.polarity, false, true));
+            }
+            AudioSys.sfxSpecial();
+            this.energy = 0;
+            GameEngine.shakeScreen(20);
+        }
+    }
+    swapPolarity() {
+        this.polarity = this.polarity === CONFIG.POLARITY.CYAN ? CONFIG.POLARITY.MAGENTA : CONFIG.POLARITY.CYAN;
+        AudioSys.sfxSwap();
+        GameEngine.spawnParticles(this.x, this.y, this.polarity === CONFIG.POLARITY.CYAN ? CONFIG.COLORS.CYAN[3] : CONFIG.COLORS.MAGENTA[3], 20);
+    }
+    absorb() {
+        this.energy = Math.min(this.maxEnergy, this.energy + 10);
+        AudioSys.sfxAbsorb();
+        GameEngine.spawnParticles(this.x, this.y, '#ffffff', 10);
+    }
+    draw(ctx) {
+        let spriteName = this.polarity === CONFIG.POLARITY.CYAN ? 'PLAYER_C' : 'PLAYER_M';
+        let img = GraphicsSys.cache[spriteName];
+        if (img) ctx.drawImage(img, this.x - img.width/2, this.y - img.height/2);
+    }
+}
+
+class Enemy extends Entity {
+    constructor(x, y, data) {
+        super(x, y, data.hp, Math.random() > 0.5 ? CONFIG.POLARITY.CYAN : CONFIG.POLARITY.MAGENTA);
+        this.type = data.type;
+        this.spd = data.spd;
+        this.pattern = data.pattern;
+        this.originX = x; this.originY = y;
+        this.time = Math.random() * 100;
+        this.fireTimer = Math.random() * 120 + 60;
+        
+        if (this.type === 'BOSS') {
+            this.width = 144; this.height = 144;
+            this.phase = 1;
+        } else {
+            this.width = 64; this.height = 52;
+        }
+    }
+    update() {
+        this.time += 0.05;
+        
+        if (this.type === 'BOSS') {
+            this.x = CONFIG.CANVAS_W/2 + Math.sin(this.time) * 300;
+            this.y = 150 + Math.cos(this.time * 2) * 50;
+            
+            // Boss phase change
+            if (this.hp < this.maxHp / 2 && this.phase === 1) {
+                this.phase = 2;
+                this.spd *= 1.5;
+                GameEngine.spawnText(this.x, this.y, "OVERDRIVE!", '#ff0000');
+            }
+            
+            // Boss firing pattern
+            this.fireTimer--;
+            if (this.fireTimer <= 0) {
+                let p = Math.random() > 0.5 ? CONFIG.POLARITY.CYAN : CONFIG.POLARITY.MAGENTA;
+                for(let i = -2; i <= 2; i++) {
+                    GameEngine.projectiles.push(new Projectile(this.x, this.y + 70, 8, p, true));
+                    GameEngine.projectiles[GameEngine.projectiles.length-1].vx = i * 2; // Spread
+                }
+                this.fireTimer = this.phase === 1 ? 90 : 45;
+                AudioSys.sfxShoot(p);
+            }
+        } else {
+            // Normal enemies
+            if (this.pattern === 'ZIGZAG') {
+                this.x = this.originX + Math.sin(this.time * this.spd) * 100;
+                this.y += 0.5; // Slowly descend
+            } else if (this.pattern === 'CIRCLE') {
+                this.x = this.originX + Math.cos(this.time * this.spd) * 80;
+                this.y = this.originY + Math.sin(this.time * this.spd) * 80;
+                this.originY += 0.2;
+            }
+            
+            this.fireTimer--;
+            if (this.fireTimer <= 0) {
+                GameEngine.projectiles.push(new Projectile(this.x, this.y + 30, 6, this.polarity, true));
+                this.fireTimer = Math.random() * 180 + 120;
+            }
+        }
+    }
+    draw(ctx) {
+        let prefix = this.type === 'BOSS' ? 'BOSS_' : 'CRAB_';
+        let suffix = this.polarity === CONFIG.POLARITY.CYAN ? 'C' : 'M';
+        let img = GraphicsSys.cache[prefix + suffix];
+        if (img) ctx.drawImage(img, this.x - img.width/2, this.y - img.height/2);
+        
+        // Boss HP Bar
+        if (this.type === 'BOSS') {
+            ctx.fillStyle = '#ff0000';
+            ctx.fillRect(this.x - 100, this.y - 90, 200 * (this.hp / this.maxHp), 10);
+            ctx.strokeStyle = '#ffffff'; ctx.strokeRect(this.x - 100, this.y - 90, 200, 10);
+        }
+    }
+}
+
+// ==========================================
+// 5. CORE GAME ENGINE STATE & LOOP
+// ==========================================
+const GameEngine = {
+    canvas: null, ctx: null, state: CONFIG.STATES.MENU,
+    player: null, enemies: [], projectiles: [], particles: [], texts: [],
+    keys: {}, score: 0, currentWave: 0, shakeFrames: 0, gridOffsetY: 0,
+    animFrame: null, waveTimer: 0,
+    
+    init: function() {
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        GraphicsSys.preRender();
+        this.setupInputs();
+        this.drawMenuBg();
+    },
+    
+    boot: function() {
+        document.getElementById('startScreen').classList.add('hidden');
+        document.getElementById('hud').classList.remove('hidden');
+        
+        try { if (!AudioSys.initialized) AudioSys.init(); } 
+        catch (e) { console.warn("Audio blocked."); }
+        
+        this.resetGame();
+        this.state = CONFIG.STATES.WAVE_TRANSITION;
+        this.waveTimer = 180;
+        if (this.animFrame) cancelAnimationFrame(this.animFrame);
+        this.loop();
+    },
+    
+    resetGame: function() {
+        this.player = new Player();
+        this.enemies = []; this.projectiles = []; this.particles = []; this.texts = [];
+        this.score = 0; this.currentWave = 0;
+        this.updateHUD();
+    },
+    
+    startWave: function() {
+        if (this.currentWave >= WAVES.length) {
+            this.triggerVictory();
+            return;
+        }
+        let waveData = WAVES[this.currentWave];
+        this.enemies = [];
+        
+        waveData.enemies.forEach(group => {
+            let startX = CONFIG.CANVAS_W / 2 - ((group.cols - 1) * 100) / 2;
+            let startY = 100;
+            for(let r=0; r<group.rows; r++) {
+                for(let c=0; c<group.cols; c++) {
+                    this.enemies.push(new Enemy(startX + c*100, startY + r*80, group));
+                }
+            }
+        });
+        this.state = CONFIG.STATES.PLAYING;
+        document.getElementById('waveDisplay').innerText = (this.currentWave + 1);
+    },
+    
+    setupInputs: function() {
+        window.addEventListener('keydown', e => {
+            this.keys[e.code] = true;
+            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+                if(this.state === CONFIG.STATES.PLAYING && !e.repeat) this.player.swapPolarity();
+            }
+        });
+        window.addEventListener('keyup', e => this.keys[e.code] = false);
+    },
+    
+    spawnParticles: function(x, y, color, count) {
+        for(let i=0; i<count; i++) this.particles.push(new Particle(x, y, color, 8, Math.random()*4+2, 30));
+    },
+    spawnText: function(x, y, text, color) {
+        this.texts.push(new FloatingText(x, y, text, color));
+    },
+    shakeScreen: function(frames) { this.shakeFrames = frames; },
+    
+    checkCollisions: function() {
+        let pBox = this.player.getAABB();
+        
+        for (let i = this.projectiles.length - 1; i >= 0; i--) {
+            let proj = this.projectiles[i];
+            let hit = false;
+            
+            if (proj.isEnemy) {
+                // Enemy proj hits Player
+                if (proj.x > pBox.x && proj.x < pBox.x + pBox.w && proj.y > pBox.y && proj.y < pBox.y + pBox.h) {
+                    hit = true;
+                    if (proj.polarity === this.player.polarity) {
+                        this.player.absorb();
+                        this.spawnText(this.player.x, this.player.y - 20, "ABSORBED!", '#00ff00');
+                    } else {
+                        this.player.hp -= 20;
+                        AudioSys.sfxHit();
+                        this.shakeScreen(10);
+                        this.spawnParticles(this.player.x, this.player.y, '#ff0000', 15);
+                        if (this.player.hp <= 0) this.triggerGameOver();
+                    }
+                }
+            } else {
+                // Player proj hits Enemy
+                for (let j = this.enemies.length - 1; j >= 0; j--) {
+                    let e = this.enemies[j];
+                    let eBox = e.getAABB();
+                    if (proj.x > eBox.x && proj.x < eBox.x + eBox.w && proj.y > eBox.y && proj.y < eBox.y + eBox.h) {
+                        hit = true;
+                        let dmg = e.takeDamage(proj.isSpecial ? 50 : 10, proj.polarity);
+                        this.spawnText(e.x, e.y, dmg, proj.polarity === e.polarity ? '#aaaaaa' : '#ffff00');
+                        AudioSys.sfxHit();
+                        if (!e.active) {
+                            this.spawnParticles(e.x, e.y, e.polarity === CONFIG.POLARITY.CYAN ? CONFIG.COLORS.CYAN[3] : CONFIG.COLORS.MAGENTA[3], 30);
+                            AudioSys.sfxExplode();
+                            this.score += (e.type === 'BOSS' ? 5000 : 100);
+                            this.shakeScreen(e.type === 'BOSS' ? 30 : 5);
+                            this.enemies.splice(j, 1);
+                        }
+                        break; // Proj consumed
+                    }
+                }
+            }
+            if (hit || proj.y < -50 || proj.y > CONFIG.CANVAS_H + 50) {
+                this.projectiles.splice(i, 1);
+            }
+        }
+        
+        // Enemy touches player
+        for (let j = 0; j < this.enemies.length; j++) {
+            let eBox = this.enemies[j].getAABB();
+            if (pBox.x < eBox.x + eBox.w && pBox.x + pBox.w > eBox.x && pBox.y < eBox.y + eBox.h && pBox.y + pBox.h > eBox.y) {
+                this.player.hp -= 50;
+                this.enemies[j].active = false;
+                this.enemies.splice(j, 1);
+                AudioSys.sfxExplode();
+                this.shakeScreen(20);
+                if (this.player.hp <= 0) this.triggerGameOver();
+            }
+        }
+    },
+    
+    update: function() {
+        if (this.state === CONFIG.STATES.WAVE_TRANSITION) {
+            this.waveTimer--;
+            if (this.waveTimer <= 0) this.startWave();
+            return;
+        }
+        if (this.state !== CONFIG.STATES.PLAYING) return;
+        
+        this.player.update(this.keys);
+        this.enemies.forEach(e => e.update());
+        this.projectiles.forEach(p => { p.update(); if(p.vx) p.x += p.vx; });
+        
+        this.checkCollisions();
+        
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            this.particles[i].update();
+            if (this.particles[i].life <= 0) this.particles.splice(i, 1);
+        }
+        for (let i = this.texts.length - 1; i >= 0; i--) {
+            this.texts[i].update();
+            if (this.texts[i].life <= 0) this.texts.splice(i, 1);
+        }
+        
+        this.gridOffsetY = (this.gridOffsetY + 2) % 64;
+        this.updateHUD();
+        
+        if (this.enemies.length === 0) {
+            this.currentWave++;
+            this.state = CONFIG.STATES.WAVE_TRANSITION;
+            this.waveTimer = 180;
+        }
+    },
+    
+    draw: function() {
+        this.ctx.fillStyle = CONFIG.COLORS.BG;
+        this.ctx.fillRect(0, 0, CONFIG.CANVAS_W, CONFIG.CANVAS_H);
+        
+        // Screen Shake
+        this.ctx.save();
+        if (this.shakeFrames > 0) {
+            let dx = (Math.random()-0.5)*10;
+            let dy = (Math.random()-0.5)*10;
+            this.ctx.translate(dx, dy);
+            this.shakeFrames--;
+        }
+        
+        // Synthwave Grid Parallax
+        this.ctx.fillStyle = this.ctx.createPattern(GraphicsSys.bgPattern, 'repeat');
+        this.ctx.save();
+        this.ctx.translate(0, this.gridOffsetY - 64);
+        // Add perspective warping via scale/translate (Pseudo 3D)
+        this.ctx.globalAlpha = 0.3;
+        this.ctx.fillRect(0, 0, CONFIG.CANVAS_W, CONFIG.CANVAS_H + 128);
+        this.ctx.restore();
+        
+        if (this.state === CONFIG.STATES.WAVE_TRANSITION && WAVES[this.currentWave]) {
+            this.ctx.fillStyle = '#ffffff';
+            this.ctx.font = "40px 'Press Start 2P'";
+            this.ctx.textAlign = "center";
+            this.ctx.fillText(WAVES[this.currentWave].text, CONFIG.CANVAS_W/2, CONFIG.CANVAS_H/2);
+            this.ctx.font = "20px 'Press Start 2P'";
+            this.ctx.fillText("PREPARE-SE", CONFIG.CANVAS_W/2, CONFIG.CANVAS_H/2 + 50);
+            this.ctx.textAlign = "left";
+        }
+        
+        this.enemies.forEach(e => e.draw(this.ctx));
+        this.projectiles.forEach(p => p.draw(this.ctx));
+        this.particles.forEach(p => p.draw(this.ctx));
+        this.texts.forEach(t => t.draw(this.ctx));
+        if (this.player && this.player.hp > 0) this.player.draw(this.ctx);
+        
+        this.ctx.restore(); // Restore shake
+    },
+    
+    drawMenuBg: function() {
+        this.ctx.fillStyle = CONFIG.COLORS.BG;
+        this.ctx.fillRect(0, 0, CONFIG.CANVAS_W, CONFIG.CANVAS_H);
+        let p = this.ctx.createPattern(GraphicsSys.bgPattern, 'repeat');
+        this.ctx.fillStyle = p; this.ctx.globalAlpha = 0.3;
+        this.ctx.fillRect(0, 0, CONFIG.CANVAS_W, CONFIG.CANVAS_H);
+        this.ctx.globalAlpha = 1.0;
+    },
+    
+    loop: function() {
+        GameEngine.update();
+        GameEngine.draw();
+        if (GameEngine.state === CONFIG.STATES.PLAYING || GameEngine.state === CONFIG.STATES.WAVE_TRANSITION) {
+            GameEngine.animFrame = requestAnimationFrame(() => GameEngine.loop());
+        }
+    },
+    
+    updateHUD: function() {
+        document.getElementById('scoreDisplay').innerText = String(this.score).padStart(6, '0');
+        let hpPct = Math.max(0, this.player.hp / this.player.maxHp) * 100;
+        let enPct = Math.min(100, (this.player.energy / this.player.maxEnergy) * 100);
+        document.getElementById('healthBar').style.width = hpPct + '%';
+        document.getElementById('healthBar').style.backgroundColor = hpPct < 30 ? '#e74c3c' : '#2ecc71';
+        let eBar = document.getElementById('energyBar');
+        eBar.style.width = enPct + '%';
+        eBar.style.backgroundColor = enPct === 100 ? '#f1c40f' : (this.player.polarity === CONFIG.POLARITY.CYAN ? 'var(--cyan-light)' : 'var(--magenta-light)');
+    },
+    
+    triggerGameOver: function() {
+        this.state = CONFIG.STATES.GAMEOVER;
+        document.getElementById('hud').classList.add('hidden');
+        document.getElementById('gameOverScreen').classList.remove('hidden');
+        document.getElementById('endTitle').innerText = "SISTEMA FALHOU";
+        document.getElementById('endTitle').style.color = "#ff3333";
+        document.getElementById('endMessage').innerText = "Sua integridade estrutural foi comprometida.";
+        document.getElementById('endMessage').style.borderColor = "#ff3333";
+        document.getElementById('finalScore').innerText = this.score;
+    },
+    
+    triggerVictory: function() {
+        this.state = CONFIG.STATES.VICTORY;
+        document.getElementById('hud').classList.add('hidden');
+        document.getElementById('gameOverScreen').classList.remove('hidden');
+        document.getElementById('endTitle').innerText = "MISSÃO CUMPRIDA";
+        document.getElementById('endTitle').style.color = "#6FFFE9";
+        document.getElementById('endMessage').innerText = "A ameaça alienígena foi neutralizada.";
+        document.getElementById('endMessage').style.borderColor = "#6FFFE9";
+        document.getElementById('finalScore').innerText = this.score + 10000; // Bonus
+    }
+};
+
+// ==========================================
+// 6. INITIALIZATION & BOOTSTRAP (REGRA DE OURO)
+// ==========================================
+window.onload = () => {
+    GameEngine.init(); 
+    
+    document.getElementById('btnStart').addEventListener('click', () => {
+        GameEngine.boot();
+    });
+    
+    document.getElementById('btnRestart').addEventListener('click', () => {
+        document.getElementById('gameOverScreen').classList.add('hidden');
+        GameEngine.boot();
+    });
+};
+</script>
+</body>
+</html>

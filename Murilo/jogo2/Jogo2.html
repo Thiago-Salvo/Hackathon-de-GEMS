@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Capivara vs. Dengue: Defesa Urbana</title>
+    <style>
+        /* CSS Reset e Estilização Básica */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background-color: #111;
+            color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+            border: 2px solid #333;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom, #0a0a2a, #1a1a3a);
+        }
+        /* Ocultando cursor no canvas para imersão */
+        canvas.playing {
+            cursor: none; 
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+</div>
+
+<script>
+/**
+ * CAPIVARA VS. DENGUE: DEFESA URBANA
+ * Engine 2D Customizada com HTML5 Canvas.
+ * Princípio: Alta Qualidade, Zero Dependências, Código Limpo.
+ */
+
+// ============================================================================
+// 1. CONSTANTES E CONFIGURAÇÕES
+// ============================================================================
+const GAME_WIDTH = 800;
+const GAME_HEIGHT = 600;
+
+const COLORS = {
+    capybara: '#c48b52',
+    capybaraDark: '#7d522a',
+    mosquitoNormal: '#8c9eff',
+    mosquitoShooter: '#ff5252',
+    chinelo: '#ffeb3b',
+    drop: '#00e676',
+    powerupDouble: '#ff9800', // Guaraná
+    powerupSpeed: '#795548',  // Café
+    text: '#ffffff',
+    uiBg: 'rgba(0, 0, 0, 0.7)'
+};
+
+const STATE = {
+    MENU: 0,
+    PLAYING: 1,
+    GAMEOVER: 2
+};
+
+// ============================================================================
+// 2. GERENCIADOR DE INPUT
+// ============================================================================
+class InputHandler {
+    constructor() {
+        this.keys = {};
+        this.previousKeys = {};
+
+        window.addEventListener('keydown', e => {
+            this.keys[e.code] = true;
+        });
+
+        window.addEventListener('keyup', e => {
+            this.keys[e.code] = false;
+        });
+    }
+
+    update() {
+        // Atualiza o estado anterior das teclas no final do frame
+        this.previousKeys = { ...this.keys };
+    }
+
+    isDown(code) {
+        return this.keys[code] === true;
+    }
+
+    wasPressed(code) {
+        return this.keys[code] && !this.previousKeys[code];
+    }
+}
+
+// ============================================================================
+// 3. UTILITÁRIOS (Matemática e Colisão)
+// ============================================================================
+const Utils = {
+    checkAABB: (rect1, rect2) => {
+        return (
+            rect1.x < rect2.x + rect2.width &&
+            rect1.x + rect1.width > rect2.x &&
+            rect1.y < rect2.y + rect2.height &&
+            rect1.y + rect1.height > rect2.y
+        );
+    },
+    randomRange: (min, max) => Math.random() * (max - min) + min
+};
+
+// ============================================================================
+// 4. EFEITOS VISUAIS E GAME FEEL (Partículas e Screen Shake)
+// ============================================================================
+class Particle {
+    constructor(x, y, color, speed, size, lifeSpan) {
+        this.x = x;
+        this.y = y;
+        this.vx = (Math.random() - 0.5) * speed;
+        this.vy = (Math.random() - 0.5) * speed;
+        this.color = color;
+        this.size = size;
+        this.life = lifeSpan;
+        this.maxLife = lifeSpan;
+    }
+
+    update(dt) {
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        this.life -= dt;
+    }
+
+    draw(ctx) {
+        ctx.globalAlpha = Math.max(0, this.life / this.maxLife);
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+        ctx.globalAlpha = 1.0;
+    }
+}
+
+class ParticleManager {
+    constructor() {
+        this.particles = [];
+    }
+
+    createExplosion(x, y, color, amount) {
+        for (let i = 0; i < amount; i++) {
+            this.particles.push(new Particle(
+                x, y, color, 
+                Utils.randomRange(100, 300), // speed
+                Utils.randomRange(3, 6),     // size
+                Utils.randomRange(0.2, 0.6)  // lifespan em segundos
+            ));
+        }
+    }
+
+    update(dt) {
+        this.particles.forEach(p => p.update(dt));
+        this.particles = this.particles.filter(p => p.life > 0);
+    }
+
+    draw(ctx) {
+        this.particles.forEach(p => p.draw(ctx));
+    }
+}
+
+class ScreenShake {
+    constructor() {
+        this.intensity = 0;
+        this.duration = 0;
+        this.offsetX = 0;
+        this.offsetY = 0;
+    }
+
+    trigger(intensity, duration) {
+        this.intensity = intensity;
+        this.duration = duration;
+    }
+
+    update(dt) {
+        if (this.duration > 0) {
+            this.duration -= dt;
+            this.offsetX = (Math.random() - 0.5) * this.intensity;
+            this.offsetY = (Math.random() - 0.5) * this.intensity;
+        } else {
+            this.offsetX = 0;
+            this.offsetY = 0;
+        }
+    }
+}
+
+// ============================================================================
+// 5. BACKGROUND PROCEDURAL (Cidade Brasileira)
+// ============================================================================
+class ParallaxBackground {
+    constructor() {
+        this.buildings = [];
+        this.stars = [];
+        this.generateCity();
+        this.generateStars();
+    }
+
+    generateCity() {
+        let currentX = 0;
+        while (currentX < GAME_WIDTH) {
+            const width = Utils.randomRange(40, 100);
+            const height = Utils.randomRange(50, 200);
+            this.buildings.push({
+                x: currentX,
+                width: width,
+                height: height,
+                color: `rgb(${Math.random()*20+10}, ${Math.random()*20+10}, ${Math.random()*30+20})`
+            });
+            currentX += width;
+        }
+    }
+
+    generateStars() {
+        for (let i = 0; i < 50; i++) {
+            this.stars.push({
+                x: Math.random() * GAME_WIDTH,
+                y: Math.random() * (GAME_HEIGHT / 2),
+                size: Math.random() * 2,
+                alpha: Math.random()
+            });
+        }
+    }
+
+    draw(ctx) {
+        // Draw Stars
+        this.stars.forEach(s => {
+            ctx.fillStyle = `rgba(255, 255, 255, ${s.alpha})`;
+            ctx.fillRect(s.x, s.y, s.size, s.size);
+        });
+
+        // Draw Buildings
+        this.buildings.forEach(b => {
+            ctx.fillStyle = b.color;
+            ctx.fillRect(b.x, GAME_HEIGHT - b.height, b.width, b.height);
+        });
+    }
+}
+
+// ============================================================================
+// 6. ENTIDADES DO JOGO (Player, Inimigos, Projéteis)
+// ============================================================================
+class Bullet {
+    constructor(x, y, vy, color, isEnemy) {
+        this.width = 6;
+        this.height = 15;
+        this.x = x - this.width / 2;
+        this.y = y;
+        this.vy = vy;
+        this.color = color;
+        this.isEnemy = isEnemy;
+        this.markedForDeletion = false;
+    }
+
+    update(dt) {
+        this.y += this.vy * dt;
+        if (this.y < -50 || this.y > GAME_HEIGHT + 50) {
+            this.markedForDeletion = true;
+        }
+    }
+
+    draw(ctx) {
+        ctx.fillStyle = this.color;
+        // Desenha projétil arredondado
+        ctx.beginPath();
+        ctx.roundRect(this.x, this.y, this.width, this.height, 3);
+        ctx.fill();
+    }
+}
+
+class PowerUp {
+    constructor(x, y, type) {
+        this.width = 20;
+        this.height = 20;
+        this.x = x;
+        this.y = y;
+        this.vy = 100; // cai lentamente
+        this.type = type; // 'DOUBLE' ou 'SPEED'
+        this.markedForDeletion = false;
+        this.color = type === 'DOUBLE' ? COLORS.powerupDouble : COLORS.powerupSpeed;
+    }
+
+    update(dt) {
+        this.y += this.vy * dt;
+        if (this.y > GAME_HEIGHT) this.markedForDeletion = true;
+    }
+
+    draw(ctx) {
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x + this.width/2, this.y + this.height/2, this.width/2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = '12px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText(this.type === 'DOUBLE' ? '2x' : '>>', this.x + this.width/2, this.y + this.height/2 + 4);
+    }
+}
+
+class Player {
+    constructor(game) {
+        this.game = game;
+        this.width = 50;
+        this.height = 40;
+        this.x = GAME_WIDTH / 2 - this.width / 2;
+        this.y = GAME_HEIGHT - this.height - 20;
+        
+        this.baseSpeed = 300;
+        this.speed = this.baseSpeed;
+        
+        this.cooldownTimer = 0;
+        this.cooldownDelay = 0.4; // 400ms entre tiros
+        
+        this.isHit = false;
+        this.hitTimer = 0;
+
+        // Status / PowerUps
+        this.doubleShot = false;
+        this.powerUpTimer = 0;
+    }
+
+    update(dt, input) {
+        // Power-up de tempo
+        if (this.powerUpTimer > 0) {
+            this.powerUpTimer -= dt;
+            if (this.powerUpTimer <= 0) {
+                this.doubleShot = false;
+                this.speed = this.baseSpeed;
+            }
+        }
+
+        // Movimentação
+        if (input.isDown('ArrowLeft') || input.isDown('KeyA')) {
+            this.x -= this.speed * dt;
+        }
+        if (input.isDown('ArrowRight') || input.isDown('KeyD')) {
+            this.x += this.speed * dt;
+        }
+
+        // Limites da tela
+        if (this.x < 0) this.x = 0;
+        if (this.x + this.width > GAME_WIDTH) this.x = GAME_WIDTH - this.width;
+
+        // Cooldown do tiro
+        if (this.cooldownTimer > 0) {
+            this.cooldownTimer -= dt;
+        }
+
+        // Ação de Atirar
+        if (input.isDown('Space') && this.cooldownTimer <= 0) {
+            this.shoot();
+        }
+
+        // Efeito de Dano Visual (Piscar)
+        if (this.isHit) {
+            this.hitTimer -= dt;
+            if (this.hitTimer <= 0) this.isHit = false;
+        }
+    }
+
+    shoot() {
+        this.cooldownTimer = this.cooldownDelay;
+        if (this.doubleShot) {
+            this.game.bullets.push(new Bullet(this.x + 10, this.y, -500, COLORS.chinelo, false));
+            this.game.bullets.push(new Bullet(this.x + this.width - 10, this.y, -500, COLORS.chinelo, false));
+        } else {
+            this.game.bullets.push(new Bullet(this.x + this.width / 2, this.y, -500, COLORS.chinelo, false));
+        }
+    }
+
+    applyPowerUp(type) {
+        this.powerUpTimer = 7.0; // 7 segundos de duração
+        if (type === 'DOUBLE') {
+            this.doubleShot = true;
+        } else if (type === 'SPEED') {
+            this.speed = this.baseSpeed * 1.5;
+        }
+    }
+
+    takeDamage() {
+        if (this.isHit) return; // Invulnerabilidade temporária
+        this.game.lives--;
+        this.isHit = true;
+        this.hitTimer = 0.5;
+        this.game.screenShake.trigger(10, 0.2);
+        this.game.particles.createExplosion(this.x + this.width/2, this.y + this.height/2, COLORS.capybara, 30);
+        
+        // Remove powerups ao tomar dano
+        this.powerUpTimer = 0; 
+        this.doubleShot = false;
+        this.speed = this.baseSpeed;
+
+        if (this.game.lives <= 0) {
+            this.game.setGameOver();
+        }
+    }
+
+    draw(ctx) {
+        // Se estiver "hit", pisca
+        if (this.isHit && Math.floor(Date.now() / 100) % 2 === 0) return;
+
+        // Desenhar Capivara (Simplificada com formas geométricas para zero dependências)
+        ctx.fillStyle = COLORS.capybara;
+        
+        // Corpo
+        ctx.beginPath();
+        ctx.roundRect(this.x, this.y + 10, this.width, this.height - 10, 10);
+        ctx.fill();
+        
+        // Focinho
+        ctx.fillStyle = COLORS.capybaraDark;
+        ctx.beginPath();
+        ctx.roundRect(this.x + this.width - 15, this.y + 15, 20, 15, 5);
+        ctx.fill();
+
+        // Orelhas
+        ctx.fillStyle = COLORS.capybara;
+        ctx.beginPath();
+        ctx.arc(this.x + 10, this.y + 10, 8, 0, Math.PI * 2);
+        ctx.arc(this.x + 30, this.y + 10, 8, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Olho
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width - 5, this.y + 10, 3, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+class Enemy {
+    constructor(x, y, type) {
+        this.width = 30;
+        this.height = 30;
+        this.x = x;
+        this.y = y;
+        this.type = type; // 0 = Normal, 1 = Atirador
+        this.markedForDeletion = false;
+        this.scoreValue = type === 1 ? 20 : 10;
+        
+        // Offset de animação flutuante
+        this.animOffset = Math.random() * Math.PI * 2;
+    }
+
+    draw(ctx, time) {
+        const floatY = Math.sin(time * 5 + this.animOffset) * 3;
+        
+        ctx.fillStyle = this.type === 1 ? COLORS.mosquitoShooter : COLORS.mosquitoNormal;
+        
+        // Corpo Mosquito (asas simples)
+        ctx.beginPath();
+        ctx.arc(this.x + this.width/2, this.y + this.height/2 + floatY, this.width/2, 0, Math.PI*2);
+        ctx.fill();
+
+        // Asas
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.beginPath();
+        ctx.ellipse(this.x - 5, this.y + floatY, 10, 5, -Math.PI/4, 0, Math.PI*2);
+        ctx.ellipse(this.x + this.width + 5, this.y + floatY, 10, 5, Math.PI/4, 0, Math.PI*2);
+        ctx.fill();
+    }
+}
+
+class EnemyFleet {
+    constructor(game) {
+        this.game = game;
+        this.enemies = [];
+        this.direction = 1; // 1 = Direita, -1 = Esquerda
+        this.baseSpeed = 50;
+        this.currentSpeed = this.baseSpeed;
+        this.dropDistance = 30;
+        
+        // Temporizadores
+        this.shootTimer = 0;
+    }
+
+    initWave(waveNumber) {
+        this.enemies = [];
+        const rows = Math.min(4 + Math.floor(waveNumber / 2), 6); // Max 6 linhas
+        const cols = 10;
+        const startY = 50 + (waveNumber * 10); // Começa um pouco mais baixo a cada wave
+
+        for (let row = 0; row < rows; row++) {
+            for (let col = 0; col < cols; col++) {
+                // 20% de chance de ser atirador, aumenta com a wave
+                const isShooter = Math.random() < Math.min(0.2 + (waveNumber * 0.05), 0.6) ? 1 : 0;
+                this.enemies.push(new Enemy(
+                    50 + col * 50,
+                    startY + row * 40,
+                    isShooter
+                ));
+            }
+        }
+        
+        // Aumenta a velocidade base conforme a onda
+        this.baseSpeed = 50 + (waveNumber * 15);
+        this.currentSpeed = this.baseSpeed;
+        this.direction = 1;
+    }
+
+    update(dt) {
+        if (this.enemies.length === 0) return;
+
+        // Acelerar conforme inimigos morrem (Space Invaders classico)
+        const speedMultiplier = 1 + ((60 - this.enemies.length) / 60) * 2;
+        this.currentSpeed = this.baseSpeed * speedMultiplier;
+
+        let hitEdge = false;
+        let lowestY = 0;
+
+        // Movimento horizontal
+        this.enemies.forEach(e => {
+            e.x += this.currentSpeed * this.direction * dt;
+            if (e.x <= 10 || e.x + e.width >= GAME_WIDTH - 10) {
+                hitEdge = true;
+            }
+            if (e.y > lowestY) lowestY = e.y;
+        });
+
+        // Se bater na borda, inverte direção e desce
+        if (hitEdge) {
+            this.direction *= -1;
+            this.enemies.forEach(e => {
+                e.x += this.currentSpeed * this.direction * dt; // Compensação
+                e.y += this.dropDistance;
+            });
+        }
+
+        // Lógica de atirar (apenas inimigos tipo 1)
+        this.shootTimer -= dt;
+        if (this.shootTimer <= 0) {
+            const shooters = this.enemies.filter(e => e.type === 1);
+            if (shooters.length > 0) {
+                const randomShooter = shooters[Math.floor(Math.random() * shooters.length)];
+                this.game.bullets.push(new Bullet(
+                    randomShooter.x + randomShooter.width/2,
+                    randomShooter.y + randomShooter.height,
+                    300 + (this.game.wave * 20), // velocidade do tiro aumenta
+                    COLORS.drop,
+                    true
+                ));
+            }
+            // Frequência de tiros aumenta com a onda
+            this.shootTimer = Utils.randomRange(0.5, Math.max(0.5, 2.0 - (this.game.wave * 0.2)));
+        }
+
+        // Condição de Derrota se chegarem muito baixo
+        if (lowestY + 30 >= this.game.player.y) {
+            this.game.setGameOver();
+        }
+    }
+
+    draw(ctx, time) {
+        this.enemies.forEach(e => e.draw(ctx, time));
+    }
+}
+
+// ============================================================================
+// 7. MOTOR PRINCIPAL DO JOGO (Game Loop e Gerenciamento de Estado)
+// ============================================================================
+class Game {
+    constructor() {
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        
+        this.input = new InputHandler();
+        this.screenShake = new ScreenShake();
+        this.particles = new ParticleManager();
+        this.background = new ParallaxBackground();
+        
+        this.state = STATE.MENU;
+        this.highScore = localStorage.getItem('capybara_highscore') || 0;
+        
+        this.lastTime = 0;
+        this.time = 0; // Tempo global rodando para animações
+
+        // Bind do loop
+        this.loop = this.loop.bind(this);
+        requestAnimationFrame(this.loop);
+    }
+
+    initGame() {
+        this.player = new Player(this);
+        this.fleet = new EnemyFleet(this);
+        this.bullets = [];
+        this.powerUps = [];
+        
+        this.score = 0;
+        this.lives = 3;
+        this.wave = 1;
+        
+        this.fleet.initWave(this.wave);
+        this.state = STATE.PLAYING;
+        this.canvas.classList.add('playing');
+        this.particles.particles = []; // Limpa partículas
+    }
+
+    setGameOver() {
+        this.state = STATE.GAMEOVER;
+        this.canvas.classList.remove('playing');
+        if (this.score > this.highScore) {
+            this.highScore = this.score;
+            localStorage.setItem('capybara_highscore', this.highScore);
+        }
+        this.screenShake.trigger(20, 0.5);
+    }
+
+    checkCollisions() {
+        // Balas x Entidades
+        this.bullets.forEach(b => {
+            if (b.isEnemy) {
+                // Bala inimiga vs Player
+                if (!this.player.isHit && Utils.checkAABB(b, this.player)) {
+                    b.markedForDeletion = true;
+                    this.player.takeDamage();
+                }
+            } else {
+                // Bala Player vs Inimigos
+                this.fleet.enemies.forEach(e => {
+                    if (!b.markedForDeletion && !e.markedForDeletion && Utils.checkAABB(b, e)) {
+                        b.markedForDeletion = true;
+                        e.markedForDeletion = true;
+                        this.score += e.scoreValue;
+                        this.particles.createExplosion(e.x + e.width/2, e.y + e.height/2, e.type === 1 ? COLORS.mosquitoShooter : COLORS.mosquitoNormal, 15);
+                        
+                        // Chance de drop de PowerUp (5%)
+                        if (Math.random() < 0.05) {
+                            const type = Math.random() > 0.5 ? 'DOUBLE' : 'SPEED';
+                            this.powerUps.push(new PowerUp(e.x, e.y, type));
+                        }
+                    }
+                });
+            }
+        });
+
+        // Limpar entidades mortas
+        this.bullets = this.bullets.filter(b => !b.markedForDeletion);
+        this.fleet.enemies = this.fleet.enemies.filter(e => !e.markedForDeletion);
+        
+        // PowerUps x Player
+        this.powerUps.forEach(p => {
+            if (Utils.checkAABB(p, this.player)) {
+                p.markedForDeletion = true;
+                this.player.applyPowerUp(p.type);
+                this.score += 50;
+                this.particles.createExplosion(this.player.x + this.player.width/2, this.player.y, COLORS.powerupDouble, 20);
+            }
+        });
+        this.powerUps = this.powerUps.filter(p => !p.markedForDeletion);
+
+        // Checar fim de onda
+        if (this.fleet.enemies.length === 0) {
+            this.wave++;
+            this.player.applyPowerUp('DOUBLE'); // Presente ao passar de fase
+            this.fleet.initWave(this.wave);
+        }
+    }
+
+    update(dt) {
+        this.time += dt;
+        this.screenShake.update(dt);
+        
+        if (this.state === STATE.MENU) {
+            if (this.input.wasPressed('Enter')) {
+                this.initGame();
+            }
+        } 
+        else if (this.state === STATE.PLAYING) {
+            this.player.update(dt, this.input);
+            this.fleet.update(dt);
+            this.bullets.forEach(b => b.update(dt));
+            this.powerUps.forEach(p => p.update(dt));
+            this.particles.update(dt);
+            
+            this.checkCollisions();
+            
+            // Pausa improvisada ou reset? Aqui mantemos focado apenas na jogabilidade fluida.
+        } 
+        else if (this.state === STATE.GAMEOVER) {
+            this.particles.update(dt);
+            if (this.input.wasPressed('Enter')) {
+                this.initGame();
+            }
+        }
+
+        this.input.update();
+    }
+
+    drawUI() {
+        this.ctx.fillStyle = COLORS.text;
+        this.ctx.font = '20px Courier New';
+        this.ctx.textAlign = 'left';
+        
+        // Barra Superior HUD
+        this.ctx.fillText(`PONTOS: ${this.score}`, 20, 30);
+        this.ctx.fillText(`ONDA: ${this.wave}`, GAME_WIDTH / 2 - 40, 30);
+        
+        // Corações (Vidas)
+        this.ctx.fillStyle = '#ff1744';
+        let livesText = 'VIDAS: ';
+        for(let i=0; i<this.lives; i++) livesText += '❤ ';
+        this.ctx.fillText(livesText, GAME_WIDTH - 150, 30);
+
+        // Indicador de PowerUp
+        if (this.player.powerUpTimer > 0) {
+            this.ctx.fillStyle = COLORS.powerupDouble;
+            this.ctx.fillRect(20, 45, (this.player.powerUpTimer / 7) * 100, 10);
+            this.ctx.fillStyle = COLORS.text;
+            this.ctx.font = '12px Courier New';
+            this.ctx.fillText('BUFF ATIVO', 20, 70);
+        }
+    }
+
+    draw() {
+        // Aplica o Screen Shake ao Contexto do Canvas
+        this.ctx.save();
+        this.ctx.translate(this.screenShake.offsetX, this.screenShake.offsetY);
+
+        // Limpa a tela
+        this.ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+        // Fundo
+        this.background.draw(this.ctx);
+
+        if (this.state === STATE.MENU) {
+            this.ctx.fillStyle = COLORS.uiBg;
+            this.ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            
+            this.ctx.fillStyle = COLORS.text;
+            this.ctx.textAlign = 'center';
+            this.ctx.font = '40px Courier New';
+            this.ctx.fillText('CAPIVARA VS DENGUE', GAME_WIDTH/2, GAME_HEIGHT/2 - 40);
+            this.ctx.font = '20px Courier New';
+            this.ctx.fillText(`High Score: ${this.highScore}`, GAME_WIDTH/2, GAME_HEIGHT/2);
+            this.ctx.fillStyle = '#ffeb3b';
+            this.ctx.fillText('Aperte [ENTER] para Iniciar', GAME_WIDTH/2, GAME_HEIGHT/2 + 60);
+            
+            this.ctx.font = '14px Courier New';
+            this.ctx.fillStyle = '#aaa';
+            this.ctx.fillText('Movimento: Setas ou A/D | Atirar: Espaço', GAME_WIDTH/2, GAME_HEIGHT - 30);
+        } 
+        else if (this.state === STATE.PLAYING) {
+            this.player.draw(this.ctx);
+            this.fleet.draw(this.ctx, this.time);
+            this.bullets.forEach(b => b.draw(this.ctx));
+            this.powerUps.forEach(p => p.draw(this.ctx));
+            this.particles.draw(this.ctx);
+            this.drawUI();
+        } 
+        else if (this.state === STATE.GAMEOVER) {
+            this.player.draw(this.ctx); // Mostra posição em que morreu
+            this.fleet.draw(this.ctx, this.time);
+            this.particles.draw(this.ctx); // Mostra explosões
+            
+            this.ctx.fillStyle = COLORS.uiBg;
+            this.ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            
+            this.ctx.fillStyle = '#ff1744';
+            this.ctx.textAlign = 'center';
+            this.ctx.font = '50px Courier New';
+            this.ctx.fillText('GAME OVER', GAME_WIDTH/2, GAME_HEIGHT/2 - 40);
+            this.ctx.fillStyle = COLORS.text;
+            this.ctx.font = '24px Courier New';
+            this.ctx.fillText(`Pontuação Final: ${this.score}`, GAME_WIDTH/2, GAME_HEIGHT/2 + 10);
+            this.ctx.font = '18px Courier New';
+            this.ctx.fillText('Aperte [ENTER] para Tentar Novamente', GAME_WIDTH/2, GAME_HEIGHT/2 + 60);
+        }
+
+        this.ctx.restore(); // Restaura da tradução do Screen Shake
+    }
+
+    loop(timestamp) {
+        if (!this.lastTime) this.lastTime = timestamp;
+        // Calculando DeltaTime em segundos (limitado a max 0.1s para evitar bugs se a aba perder foco)
+        const dt = Math.min((timestamp - this.lastTime) / 1000, 0.1);
+        this.lastTime = timestamp;
+
+        this.update(dt);
+        this.draw();
+
+        requestAnimationFrame(this.loop);
+    }
+}
+
+// ============================================================================
+// 8. INICIALIZAÇÃO
+// ============================================================================
+window.onload = () => {
+    // Inicia a engine apenas quando o DOM e imagens (se houvesse) estiverem prontos
+    new Game();
+};
+</script>
+</body>
+</html>

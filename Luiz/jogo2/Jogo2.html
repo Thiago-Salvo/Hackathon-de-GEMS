@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Alien Data Swarm</title>
+  <style>
+    /* RESET & BASE */
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+    body {
+      background-color: #050505;
+      color: #0ff;
+      font-family: 'Courier New', Courier, monospace;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      touch-action: none; /* Previne scroll/zoom no mobile */
+    }
+
+    /* GAME CONTAINER - Mantém Aspect Ratio */
+    #game-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      max-width: 1066px; /* 800x600 aspect ratio (4:3) aproximado */
+      max-height: 800px;
+      aspect-ratio: 4/3;
+      box-shadow: 0 0 30px rgba(0, 255, 255, 0.1);
+      overflow: hidden;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at center, #0a0a0a 0%, #000 100%);
+      image-rendering: pixelated;
+    }
+
+    /* UI LAYER */
+    #ui-layer { position: absolute; inset: 0; pointer-events: none; display: flex; flex-direction: column; }
+    
+    /* HUD */
+    #hud {
+      display: flex;
+      justify-content: space-between;
+      padding: 15px 25px;
+      font-size: 1.2rem;
+      font-weight: bold;
+      text-shadow: 0 0 5px #0ff;
+      z-index: 10;
+    }
+    .hud-left, .hud-right { display: flex; flex-direction: column; gap: 5px; }
+    .hud-right { align-items: flex-end; }
+    
+    /* SPECIAL BAR */
+    .bar-wrapper { border: 2px solid #f0f; width: 150px; height: 15px; position: relative; background: rgba(0,0,0,0.5); }
+    #special-bar { background: #f0f; height: 100%; width: 0%; transition: width 0.1s linear; box-shadow: 0 0 10px #f0f; }
+    #special-text { position: absolute; inset: 0; text-align: center; font-size: 0.7rem; line-height: 12px; color: #fff; text-shadow: 1px 1px 0 #000; }
+    .ready { animation: pulseSpecial 0.5s infinite alternate; }
+
+    /* CORRUPTION WARNING */
+    #corrupt-warning { color: #f00; font-size: 0.9rem; text-shadow: 0 0 5px #f00; opacity: 0; transition: opacity 0.3s; }
+    #corrupt-warning.visible { opacity: 1; animation: glitchText 0.2s infinite; }
+
+    /* SCREENS (Menu, Pausa, Game Over) */
+    .screen {
+      position: absolute; inset: 0;
+      background: rgba(5, 5, 5, 0.85);
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
+      text-align: center; pointer-events: auto; z-index: 20;
+    }
+    .hidden { display: none !important; }
+    
+    h1 { font-size: 3rem; color: #0ff; text-shadow: 0 0 15px #0ff; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 2px; }
+    h2 { font-size: 2rem; color: #f0f; text-shadow: 0 0 10px #f0f; margin-bottom: 20px; }
+    p { margin: 5px 0; color: #aaa; font-size: 1rem; max-width: 80%; line-height: 1.4; }
+    .controls-info { margin: 20px 0; padding: 15px; border: 1px solid #0ff; background: rgba(0,255,255,0.05); }
+
+    /* BUTTONS */
+    button {
+      background: rgba(0, 255, 255, 0.1); border: 2px solid #0ff; color: #0ff;
+      padding: 15px 30px; font-size: 1.5rem; font-family: inherit; font-weight: bold;
+      cursor: pointer; text-transform: uppercase; margin-top: 20px; transition: all 0.2s;
+      box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+    }
+    button:hover, button:active { background: #0ff; color: #000; box-shadow: 0 0 20px #0ff; }
+
+    /* ANIMATIONS & GLITCH */
+    @keyframes pulseSpecial { from { filter: brightness(1); } to { filter: brightness(1.5); box-shadow: 0 0 20px #f0f; } }
+    @keyframes glitchText { 
+      0% { transform: translate(0); } 20% { transform: translate(-2px, 2px); color: #0ff; } 
+      40% { transform: translate(-2px, -2px); color: #f0f; } 60% { transform: translate(2px, 2px); } 
+      80% { transform: translate(2px, -2px); } 100% { transform: translate(0); } 
+    }
+    .system-glitch { animation: canvasGlitch 0.3s infinite; }
+    @keyframes canvasGlitch {
+      0% { filter: hue-rotate(0deg) contrast(1); transform: translate(0,0); }
+      50% { filter: hue-rotate(90deg) contrast(1.5); transform: translate(-3px, 1px); }
+      100% { filter: hue-rotate(0deg) contrast(1); transform: translate(2px, -1px); }
+    }
+  </style>
+</head>
+<body>
+
+<div id="game-container">
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  
+  <div id="ui-layer">
+    <div id="hud" class="hidden">
+      <div class="hud-left">
+        <div>SCORE: <span id="score">0</span></div>
+        <div id="corrupt-warning">SYSTEM CORRUPTED! FIRE RATE -30%</div>
+      </div>
+      <div class="hud-right">
+        <div>HI-SCORE: <span id="hi-score">0</span></div>
+        <div class="bar-wrapper">
+          <div id="special-bar"></div>
+          <div id="special-text">SPECIAL (SHIFT)</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="start-screen" class="screen">
+      <h1>Alien Data Swarm</h1>
+      <p>Defenda a mainframe. Evite a corrupção total do sistema.</p>
+      <div class="controls-info">
+        <p><strong>[Desktop]</strong> Setas: Mover | Espaço: Atirar | Shift: Especial</p>
+        <p><strong>[Mobile]</strong> Toque Lados: Mover | Toque: Atirar | Swipe Cima: Especial</p>
+      </div>
+      <button id="btn-start">Iniciar Varredura</button>
+    </div>
+
+    <div id="gameover-screen" class="screen hidden">
+      <h2>SYSTEM FAILURE</h2>
+      <p>A corrupção dominou a rede.</p>
+      <p>Final Score: <span id="final-score">0</span></p>
+      <button id="btn-restart">Reiniciar Sistema</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/**
+ * ALIEN DATA SWARM - ENGINE
+ * Arquitetura modular contida para evitar poluição global.
+ */
+(() => {
+  // ==========================================
+  // CONFIGURAÇÕES GERAIS E CONSTANTES
+  // ==========================================
+  const C = {
+    W: 800, H: 600, // Resolução lógica interna
+    COLORS: {
+      bg: '#050505', player: '#0ff', bullet: '#fff', 
+      enemy: '#f0f', node: '#0f0', special: '#0ff',
+      corruption: 'rgba(255, 0, 255, 0.4)'
+    },
+    STATES: { MENU: 0, PLAYING: 1, GAMEOVER: 2 }
+  };
+
+  // ==========================================
+  // DOM ELEMENTS
+  // ==========================================
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const container = document.getElementById('game-container');
+  const ui = {
+    hud: document.getElementById('hud'),
+    score: document.getElementById('score'),
+    hiScore: document.getElementById('hi-score'),
+    specialBar: document.getElementById('special-bar'),
+    specialText: document.getElementById('special-text'),
+    warning: document.getElementById('corrupt-warning'),
+    startScreen: document.getElementById('start-screen'),
+    gameOverScreen: document.getElementById('gameover-screen'),
+    finalScore: document.getElementById('final-score'),
+    btnStart: document.getElementById('btn-start'),
+    btnRestart: document.getElementById('btn-restart')
+  };
+
+  // ==========================================
+  // AUDIO MANAGER (Web Audio API Procedural)
+  // ==========================================
+  const AudioSys = {
+    ctx: null,
+    init() {
+      if (!this.ctx) {
+        window.AudioContext = window.AudioContext || window.webkitAudioContext;
+        this.ctx = new AudioContext();
+      }
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+    },
+    play(freq, type, duration, vol, slideFreq = null) {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+      if (slideFreq) {
+        osc.frequency.exponentialRampToValueAtTime(slideFreq, this.ctx.currentTime + duration);
+      }
+      
+      gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+      
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start();
+      osc.stop(this.ctx.currentTime + duration);
+    },
+    shoot() { this.play(800, 'square', 0.1, 0.05, 1200); },
+    explosion() { this.play(100, 'sawtooth', 0.2, 0.1, 50); },
+    nodeExplosion() { this.play(300, 'square', 0.3, 0.1, 100); },
+    special() { this.play(1200, 'sine', 0.8, 0.1, 200); },
+    corrupt() { this.play(150, 'triangle', 0.4, 0.1, 50); },
+    gameOver() { this.play(200, 'sawtooth', 1.0, 0.15, 50); }
+  };
+
+  // ==========================================
+  // INPUT MANAGER (Keyboard & Touch)
+  // ==========================================
+  const Input = {
+    keys: { left: false, right: false, shoot: false, special: false },
+    touchX: null,
+    swipeStartY: null,
+    init() {
+      // Keyboard
+      window.addEventListener('keydown', e => this.handleKey(e, true));
+      window.addEventListener('keyup', e => this.handleKey(e, false));
+      
+      // Touch (Mobile)
+      canvas.addEventListener('touchstart', e => {
+        e.preventDefault();
+        AudioSys.init(); // Garante inicialização do áudio
+        const touch = e.touches[0];
+        const rect = canvas.getBoundingClientRect();
+        const x = touch.clientX - rect.left;
+        this.touchX = x;
+        this.swipeStartY = touch.clientY;
+        
+        // Direção baseada na metade da tela
+        if (x < rect.width / 2) this.keys.left = true;
+        else this.keys.right = true;
+        
+        this.keys.shoot = true; // Auto-shoot on touch
+      }, { passive: false });
+
+      canvas.addEventListener('touchmove', e => {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const rect = canvas.getBoundingClientRect();
+        const x = touch.clientX - rect.left;
+        this.touchX = x;
+        
+        // Atualiza direção se cruzar a tela arrastando
+        if (x < rect.width / 2) { this.keys.left = true; this.keys.right = false; }
+        else { this.keys.right = true; this.keys.left = false; }
+      }, { passive: false });
+
+      canvas.addEventListener('touchend', e => {
+        e.preventDefault();
+        if (e.changedTouches.length > 0 && this.swipeStartY !== null) {
+          const touch = e.changedTouches[0];
+          const deltaY = this.swipeStartY - touch.clientY;
+          if (deltaY > 50) this.keys.special = true; // Swipe Up para Especial
+        }
+        this.keys.left = false;
+        this.keys.right = false;
+        this.keys.shoot = false;
+        setTimeout(() => this.keys.special = false, 100);
+      }, { passive: false });
+    },
+    handleKey(e, isDown) {
+      if (e.code === 'ArrowLeft' || e.code === 'KeyA') this.keys.left = isDown;
+      if (e.code === 'ArrowRight' || e.code === 'KeyD') this.keys.right = isDown;
+      if (e.code === 'Space') this.keys.shoot = isDown;
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.keys.special = isDown;
+    }
+  };
+
+  // ==========================================
+  // OBJECT POOL (Performance)
+  // ==========================================
+  class Pool {
+    constructor(createFn, size) {
+      this.items = Array.from({ length: size }, createFn);
+    }
+    get() {
+      const item = this.items.find(i => !i.active);
+      if (item) item.active = true;
+      return item;
+    }
+    forEach(cb) {
+      for(let i=0; i<this.items.length; i++) {
+        if(this.items[i].active) cb(this.items[i]);
+      }
+    }
+  }
+
+  // ==========================================
+  // ENTIDADES E SISTEMAS
+  // ==========================================
+  
+  // Utilitário de Colisão AABB
+  const rectIntersect = (r1, r2) => {
+    return !(r2.x > r1.x + r1.w || r2.x + r2.w < r1.x || r2.y > r1.y + r1.h || r2.y + r2.h < r1.y);
+  };
+
+  // Sistema de Corrupção
+  const CorruptionSys = {
+    gridSize: 40, cols: C.W / 40, rows: C.H / 40, // 20x15 = 300 blocos
+    cells: [], // true = corrompido
+    ratio: 0,
+    init() { this.cells = new Array(this.cols * this.rows).fill(false); this.ratio = 0; },
+    add(x, y) {
+      const c = Math.floor(x / this.gridSize);
+      const r = Math.floor(y / this.gridSize);
+      if (c >= 0 && c < this.cols && r >= 0 && r < this.rows) {
+        if (!this.cells[r * this.cols + c]) {
+          this.cells[r * this.cols + c] = true;
+          this.updateRatio();
+          AudioSys.corrupt();
+        }
+      }
+    },
+    clearArea(yCenter, height) {
+      const startR = Math.max(0, Math.floor((yCenter - height/2) / this.gridSize));
+      const endR = Math.min(this.rows - 1, Math.floor((yCenter + height/2) / this.gridSize));
+      for (let r = startR; r <= endR; r++) {
+        for (let c = 0; c < this.cols; c++) this.cells[r * this.cols + c] = false;
+      }
+      this.updateRatio();
+    },
+    updateRatio() {
+      const activeCount = this.cells.filter(Boolean).length;
+      this.ratio = activeCount / this.cells.length;
+      if (this.ratio >= 0.4) {
+        ui.warning.classList.add('visible');
+        container.classList.add('system-glitch');
+      } else {
+        ui.warning.classList.remove('visible');
+        container.classList.remove('system-glitch');
+      }
+    },
+    draw(ctx) {
+      ctx.fillStyle = C.COLORS.corruption;
+      for (let i = 0; i < this.cells.length; i++) {
+        if (this.cells[i]) {
+          const r = Math.floor(i / this.cols);
+          const c = i % this.cols;
+          // Efeito visual estilo bloco digital defeituoso
+          ctx.fillRect(c * this.gridSize + 2, r * this.gridSize + 2, this.gridSize - 4, this.gridSize - 4);
+          if (Math.random() > 0.95) {
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(c * this.gridSize + Math.random()*20, r * this.gridSize + Math.random()*20, 5, 5);
+            ctx.fillStyle = C.COLORS.corruption;
+          }
+        }
+      }
+    }
+  };
+
+  // Partículas Visuais
+  const createParticle = () => ({ active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 0, color: '', text: '' });
+  const Particles = new Pool(createParticle, 200);
+  const spawnParticles = (x, y, color, count) => {
+    for (let i = 0; i < count; i++) {
+      const p = Particles.get();
+      if (p) {
+        p.x = x; p.y = y;
+        p.vx = (Math.random() - 0.5) * 200;
+        p.vy = (Math.random() - 0.5) * 200;
+        p.life = p.maxLife = 0.5 + Math.random() * 0.5;
+        p.color = color;
+        p.text = Math.random() > 0.5 ? '1' : '0'; // Estética Matrix/Cyberpunk
+      }
+    }
+  };
+
+  // Projéteis
+  const createBullet = () => ({ active: false, x: 0, y: 0, w: 4, h: 15, dy: 0, isEnemy: false });
+  const Bullets = new Pool(createBullet, 100);
+
+  // Jogador (Firewall Móvel)
+  const Player = {
+    x: C.W / 2 - 20, y: C.H - 50, w: 40, h: 20, speed: 400,
+    shootTimer: 0, baseFireRate: 0.15,
+    specialCharge: 0, maxSpecial: 100, isSpecialActive: false, specialTimer: 0,
+    
+    update(dt) {
+      if (this.isSpecialActive) {
+        this.specialTimer -= dt;
+        if (this.specialTimer <= 0) this.isSpecialActive = false;
+        return; // Imóvel durante o especial
+      }
+
+      // Movimento
+      if (Input.keys.left) this.x -= this.speed * dt;
+      if (Input.keys.right) this.x += this.speed * dt;
+      this.x = Math.max(0, Math.min(C.W - this.w, this.x));
+
+      // Penalidade de Cadência baseada na corrupção
+      const currentFireRate = CorruptionSys.ratio >= 0.4 ? this.baseFireRate * 1.5 : this.baseFireRate;
+
+      // Tiro
+      this.shootTimer -= dt;
+      if (Input.keys.shoot && this.shootTimer <= 0) {
+        const b = Bullets.get();
+        if (b) {
+          b.x = this.x + this.w / 2 - b.w / 2;
+          b.y = this.y - b.h;
+          b.dy = -600;
+          b.isEnemy = false;
+          this.shootTimer = currentFireRate;
+          AudioSys.shoot();
+        }
+      }
+
+      // Carga Especial Passiva
+      if (this.specialCharge < this.maxSpecial) {
+        this.specialCharge += 2 * dt; 
+      }
+
+      // Ativar Especial
+      if (Input.keys.special && this.specialCharge >= this.maxSpecial) {
+        this.isSpecialActive = true;
+        this.specialTimer = 0.5; // Duração do laser
+        this.specialCharge = 0;
+        AudioSys.special();
+        
+        // Lógica do Laser (Dano em Área Vertical + Limpa Corrupção)
+        Fleet.enemies.forEach(e => {
+          if (e.active && Math.abs((e.x + e.w/2) - (this.x + this.w/2)) < 60) {
+            e.active = false;
+            Game.addScore(e.isNode ? 50 : 10);
+            spawnParticles(e.x, e.y, C.COLORS.special, 10);
+          }
+        });
+        // Limpa corredor de corrupção
+        for(let r=0; r<CorruptionSys.rows; r++) {
+          const colL = Math.floor((this.x - 20) / CorruptionSys.gridSize);
+          const colR = Math.floor((this.x + this.w + 20) / CorruptionSys.gridSize);
+          for(let c = Math.max(0, colL); c <= Math.min(CorruptionSys.cols-1, colR); c++) {
+            CorruptionSys.cells[r * CorruptionSys.cols + c] = false;
+          }
+        }
+        CorruptionSys.updateRatio();
+      }
+    },
+    draw(ctx) {
+      if (this.isSpecialActive) {
+        // Render Laser
+        ctx.fillStyle = C.COLORS.special;
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = C.COLORS.special;
+        ctx.fillRect(this.x - 20, 0, this.w + 40, this.y);
+        ctx.shadowBlur = 0;
+      }
+      
+      // Render Player Ship
+      ctx.fillStyle = C.COLORS.player;
+      ctx.beginPath();
+      ctx.moveTo(this.x + this.w / 2, this.y);
+      ctx.lineTo(this.x + this.w, this.y + this.h);
+      ctx.lineTo(this.x, this.y + this.h);
+      ctx.closePath();
+      ctx.fill();
+    }
+  };
+
+  // Inimigos (Swarm Manager)
+  const createEnemy = () => ({ active: false, x: 0, y: 0, w: 30, h: 30, isNode: false });
+  const Fleet = {
+    enemies: Array.from({length: 60}, createEnemy),
+    dirX: 1, speed: 50, descentTimer: 0, descentStep: 20, fireCooldown: 2, level: 1,
+    
+    init() {
+      this.enemies.forEach(e => e.active = false);
+      this.speed = 50 + (this.level * 10);
+      this.dirX = 1;
+      
+      // Setup Grid
+      const cols = 10; const rows = 4 + Math.min(3, Math.floor(this.level/2));
+      const startX = 50; const startY = 50; const gapX = 50; const gapY = 40;
+      
+      let count = 0;
+      for(let r = 0; r < rows; r++) {
+        for(let c = 0; c < cols; c++) {
+          const e = this.enemies[count++];
+          e.active = true;
+          e.x = startX + c * gapX;
+          e.y = startY + r * gapY;
+          e.isNode = (Math.random() > 0.85); // 15% chance de ser Nó de Corrupção
+        }
+      }
+    },
+    update(dt) {
+      let hitEdge = false;
+      let activeCount = 0;
+      let bottomMost = 0;
+
+      // Movimentação em Bloco
+      this.enemies.forEach(e => {
+        if (!e.active) return;
+        activeCount++;
+        e.x += this.speed * this.dirX * dt;
+        if (e.x <= 10 || e.x + e.w >= C.W - 10) hitEdge = true;
+        if (e.y > bottomMost) bottomMost = e.y;
+      });
+
+      if (activeCount === 0) {
+        this.level++;
+        this.init(); // Próxima Wave
+        return;
+      }
+
+      if (hitEdge) {
+        this.dirX *= -1;
+        this.enemies.forEach(e => {
+          if(e.active) {
+            e.y += this.descentStep;
+            // Se atingiu o fundo, corrompe e morre
+            if (e.y + e.h >= C.H - 40) {
+              e.active = false;
+              CorruptionSys.add(e.x, C.H - 20);
+            }
+          }
+        });
+      }
+
+      // Tiro Inimigo
+      this.fireCooldown -= dt;
+      if (this.fireCooldown <= 0) {
+        // Encontra atiradores válidos (linha inferior)
+        const shooters = this.enemies.filter(e => e.active && Math.random() > 0.7);
+        if (shooters.length > 0) {
+          const shooter = shooters[Math.floor(Math.random() * shooters.length)];
+          const b = Bullets.get();
+          if (b) {
+            b.x = shooter.x + shooter.w/2 - b.w/2;
+            b.y = shooter.y + shooter.h;
+            b.dy = 300 + (this.level * 20);
+            b.isEnemy = true;
+          }
+        }
+        this.fireCooldown = Math.max(0.2, 2.0 - (this.level * 0.1) - (1.0 - activeCount/60)); 
+      }
+    },
+    draw(ctx) {
+      this.enemies.forEach(e => {
+        if (!e.active) return;
+        ctx.fillStyle = e.isNode ? C.COLORS.node : C.COLORS.enemy;
+        // Forma geométrica simples (losango/quadrado mix)
+        ctx.beginPath();
+        ctx.moveTo(e.x + e.w/2, e.y);
+        ctx.lineTo(e.x + e.w, e.y + e.h/2);
+        ctx.lineTo(e.x + e.w/2, e.y + e.h);
+        ctx.lineTo(e.x, e.y + e.h/2);
+        ctx.closePath();
+        ctx.fill();
+        
+        if (e.isNode) {
+          ctx.strokeStyle = '#fff';
+          ctx.stroke();
+        }
+      });
+    }
+  };
+
+  // ==========================================
+  // GAME STATE & LOOP
+  // ==========================================
+  const Game = {
+    state: C.STATES.MENU,
+    lastTime: 0, score: 0, hiScore: 0,
+    
+    init() {
+      Input.init();
+      this.loadHiScore();
+      ui.btnStart.addEventListener('click', () => this.start());
+      ui.btnRestart.addEventListener('click', () => this.start());
+      requestAnimationFrame(t => this.loop(t));
+    },
+    
+    start() {
+      AudioSys.init();
+      this.state = C.STATES.PLAYING;
+      this.score = 0;
+      Player.x = C.W / 2 - 20;
+      Player.specialCharge = 0;
+      Fleet.level = 1;
+      Fleet.init();
+      CorruptionSys.init();
+      Bullets.items.forEach(b => b.active = false);
+      Particles.items.forEach(p => p.active = false);
+      
+      ui.startScreen.classList.add('hidden');
+      ui.gameOverScreen.classList.add('hidden');
+      ui.hud.classList.remove('hidden');
+      this.updateUI();
+    },
+
+    gameOver() {
+      this.state = C.STATES.GAMEOVER;
+      AudioSys.gameOver();
+      ui.hud.classList.add('hidden');
+      ui.gameOverScreen.classList.remove('hidden');
+      ui.finalScore.innerText = this.score;
+      if (this.score > this.hiScore) {
+        this.hiScore = this.score;
+        this.saveHiScore();
+      }
+    },
+
+    addScore(pts) {
+      this.score += pts;
+      if(Player.specialCharge < Player.maxSpecial) {
+        Player.specialCharge = Math.min(Player.maxSpecial, Player.specialCharge + pts/2);
+      }
+      this.updateUI();
+    },
+
+    loadHiScore() {
+      try { this.hiScore = parseInt(localStorage.getItem('ads_hiscore')) || 0; ui.hiScore.innerText = this.hiScore; } catch(e){}
+    },
+    saveHiScore() {
+      try { localStorage.setItem('ads_hiscore', this.hiScore); } catch(e){}
+    },
+
+    updateUI() {
+      ui.score.innerText = this.score;
+      const chargePct = (Player.specialCharge / Player.maxSpecial) * 100;
+      ui.specialBar.style.width = `${chargePct}%`;
+      if (chargePct >= 100) {
+        ui.specialBar.classList.add('ready');
+        ui.specialText.innerText = "SPECIAL READY!";
+      } else {
+        ui.specialBar.classList.remove('ready');
+        ui.specialText.innerText = "CHARGING...";
+      }
+    },
+
+    loop(timestamp) {
+      const dt = Math.min((timestamp - this.lastTime) / 1000, 0.1); // Cap a 0.1s para evitar saltos absurdos
+      this.lastTime = timestamp;
+
+      this.update(dt);
+      this.draw();
+
+      requestAnimationFrame(t => this.loop(t));
+    },
+
+    update(dt) {
+      if (this.state !== C.STATES.PLAYING) return;
+
+      Player.update(dt);
+      Fleet.update(dt);
+      this.updateUI();
+
+      // Atualiza Projéteis
+      Bullets.forEach(b => {
+        b.y += b.dy * dt;
+        if (b.y < 0 || b.y > C.H) { b.active = false; return; }
+
+        // Colisões
+        if (b.isEnemy) {
+          if (!Player.isSpecialActive && rectIntersect(b, Player)) {
+            b.active = false;
+            this.gameOver();
+          }
+        } else {
+          // Tiro do jogador vs Inimigos
+          let hit = false;
+          for(let i=0; i<Fleet.enemies.length; i++) {
+            const e = Fleet.enemies[i];
+            if (e.active && rectIntersect(b, e)) {
+              e.active = false;
+              b.active = false;
+              hit = true;
+              this.addScore(e.isNode ? 50 : 10);
+              AudioSys.explosion();
+              spawnParticles(e.x, e.y, e.isNode ? C.COLORS.node : C.COLORS.enemy, 5);
+              
+              if (e.isNode) {
+                AudioSys.nodeExplosion();
+                CorruptionSys.clearArea(e.y, 100); // Nó limpa corrupção local
+              } else {
+                // Se morreu sem especial, cai corrupção
+                CorruptionSys.add(e.x, C.H - 20);
+              }
+              break;
+            }
+          }
+        }
+      });
+
+      // Atualiza Partículas
+      Particles.forEach(p => {
+        p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
+        if (p.life <= 0) p.active = false;
+      });
+
+      // Check GameOver por Corrupção (100%)
+      if (CorruptionSys.ratio >= 0.99) this.gameOver();
+    },
+
+    draw() {
+      // Background com fade sutil para rastro (trail effect)
+      ctx.fillStyle = 'rgba(5, 5, 5, 0.4)';
+      ctx.fillRect(0, 0, C.W, C.H);
+
+      if (this.state === C.STATES.MENU) return;
+
+      // Background visual (Grid hex/binário procedural simulado)
+      ctx.strokeStyle = 'rgba(0, 255, 255, 0.05)';
+      ctx.lineWidth = 1;
+      for(let i=0; i<C.W; i+=100) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, C.H); ctx.stroke(); }
+      for(let i=0; i<C.H; i+=100) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(C.W, i); ctx.stroke(); }
+
+      CorruptionSys.draw(ctx);
+      Fleet.draw(ctx);
+      Player.draw(ctx);
+
+      // Render Projéteis
+      Bullets.forEach(b => {
+        ctx.fillStyle = b.isEnemy ? C.COLORS.enemy : C.COLORS.bullet;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = ctx.fillStyle;
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+        ctx.shadowBlur = 0; // reset
+      });
+
+      // Render Partículas
+      ctx.font = '12px Courier New';
+      Particles.forEach(p => {
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.life / p.maxLife;
+        ctx.fillText(p.text, p.x, p.y);
+      });
+      ctx.globalAlpha = 1.0; // reset
+    }
+  };
+
+  // Start Engine
+  Game.init();
+
+})();
+</script>
+</body>
+</html>

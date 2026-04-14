@@ -1,0 +1,1 @@
+faça um flappy bird só que ao invés de um pássaro eu quero um gato e os obstáculos são árvores

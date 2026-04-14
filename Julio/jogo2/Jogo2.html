@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A Fúria de Atlântida</title>
+    <style>
+        /* ==========================================================================
+           RESET E ESTILOS GERAIS
+           ========================================================================== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #001220;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #fff;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(to bottom, #001a33 0%, #004080 100%);
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* ==========================================================================
+           INTERFACE DE USUÁRIO (UI)
+           ========================================================================== */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Deixa os cliques passarem para o canvas (se houver necessidade) */
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Regra rigorosa para ocultar telas */
+        .hidden {
+            display: none !important;
+        }
+
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: radial-gradient(circle at center, rgba(0, 20, 40, 0.8) 0%, rgba(0, 5, 10, 0.95) 100%);
+            z-index: 10;
+        }
+
+        h1 {
+            font-size: 4rem;
+            color: #00ffff;
+            text-shadow: 0 0 20px #00ffff, 2px 5px 5px rgba(0,0,0,0.8);
+            margin-bottom: 10px;
+            text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        h2 {
+            font-size: 2.5rem;
+            color: #ff4757;
+            text-shadow: 0 0 15px #ff4757, 2px 5px 5px rgba(0,0,0,0.8);
+            margin-bottom: 20px;
+        }
+
+        p {
+            font-size: 1.2rem;
+            margin-bottom: 30px;
+            color: #b3d4ff;
+            text-align: center;
+            max-width: 600px;
+            line-height: 1.5;
+        }
+
+        /* Botões com efeito 3D */
+        .btn-3d {
+            pointer-events: auto; /* Permite clique no botão */
+            background: linear-gradient(to bottom, #00d2ff, #3a7bd5);
+            border: none;
+            border-bottom: 6px solid #005a9e;
+            border-radius: 12px;
+            color: #fff;
+            padding: 15px 40px;
+            font-size: 1.8rem;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+            transition: transform 0.1s, border-bottom-width 0.1s, box-shadow 0.1s, filter 0.2s;
+        }
+
+        .btn-3d:hover {
+            filter: brightness(1.2);
+        }
+
+        .btn-3d:active {
+            transform: translateY(6px);
+            border-bottom-width: 0px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            margin-bottom: 6px; /* Compensa o border-bottom perdido para manter o layout */
+        }
+
+        /* HUD */
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #00ffff;
+            text-shadow: 2px 2px 4px #000;
+            z-index: 5;
+        }
+
+        .hud-stats span {
+            margin-right: 20px;
+        }
+
+        #powerup-status {
+            color: #ffdd59;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="ui-layer">
+            <div id="hud" class="hidden">
+                <div class="hud-stats">
+                    Score: <span id="scoreUI">0</span>
+                    Vida: <span id="healthUI">3</span>
+                </div>
+                <div id="powerup-status">Normal</div>
+            </div>
+
+            <div id="start-screen" class="screen">
+                <h1>A Fúria de Atlântida</h1>
+                <p>Mergulhadores estão saqueando os artefatos de Atlântida!<br>Controle Aquaman (Setas ou A/D) e atire (Espaço) para protegê-los.</p>
+                <button id="startBtn" class="btn-3d">Iniciar Batalha</button>
+            </div>
+
+            <div id="gameover-screen" class="screen hidden">
+                <h2>Atlântida Caiu</h2>
+                <p>Pontuação Final: <span id="finalScoreUI">0</span></p>
+                <button id="restartBtn" class="btn-3d">Tentar Novamente</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================================
+        // 1. CONFIGURAÇÕES E ESTADOS GERAIS
+        // ============================================================================
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // MODO DEBUG - Altere para true para ver as hitboxes e logs
+        const DEBUG = false;
+
+        let gameState = 'menu'; // 'menu', 'playing', 'gameover'
+        let lastTime = 0;
+        let animationId;
+        let shakeTimer = 0;
+
+        // Dimensões do Canvas
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // UI Elements
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('gameover-screen');
+        const hud = document.getElementById('hud');
+        const scoreUI = document.getElementById('scoreUI');
+        const healthUI = document.getElementById('healthUI');
+        const finalScoreUI = document.getElementById('finalScoreUI');
+        const powerupStatusUI = document.getElementById('powerup-status');
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+
+        // Inputs
+        const keys = {
+            ArrowLeft: false,
+            ArrowRight: false,
+            a: false,
+            d: false,
+            ' ': false
+        };
+
+        // Entidades do Jogo
+        let player;
+        let enemies = [];
+        let bullets = [];
+        let particles = [];
+        let powerups = [];
+        let parallaxLayers = [];
+        
+        let score = 0;
+        let enemySpawnTimer = 0;
+        let enemySpawnInterval = 1.5; // Segundos
+        let waveMultiplier = 1;
+
+        // ============================================================================
+        // 2. INPUT HANDLERS E PREVENÇÃO DE BUGS (GHOST MOVEMENT)
+        // ============================================================================
+        window.addEventListener('keydown', (e) => {
+            if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
+            if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault(); // Evita scroll
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
+        });
+
+        // Limpa inputs se a aba perder o foco
+        window.addEventListener('blur', () => {
+            for (let key in keys) {
+                keys[key] = false;
+            }
+        });
+
+        // Botões
+        startBtn.addEventListener('click', () => startGame());
+        restartBtn.addEventListener('click', () => startGame());
+
+        // ============================================================================
+        // 3. CLASSES DE ENTIDADES (LÓGICA SEPARADA DO RENDER)
+        // ============================================================================
+
+        // Utilitário para checagem de colisão (AABB com tolerância/Hitbox menor)
+        function rectIntersect(r1, r2, tolerance = 0.8) {
+            // Tolerance < 1 cria hitboxes menores que o sprite para evitar colisões injustas
+            const w1 = r1.width * tolerance;
+            const h1 = r1.height * tolerance;
+            const x1 = r1.x + (r1.width - w1) / 2;
+            const y1 = r1.y + (r1.height - h1) / 2;
+
+            const w2 = r2.width * tolerance;
+            const h2 = r2.height * tolerance;
+            const x2 = r2.x + (r2.width - w2) / 2;
+            const y2 = r2.y + (r2.height - h2) / 2;
+
+            return !(x2 > x1 + w1 || 
+                     x2 + w2 < x1 || 
+                     y2 > y1 + h1 || 
+                     y2 + h2 < y1);
+        }
+
+        class Player {
+            constructor() {
+                this.width = 60;
+                this.height = 80;
+                this.x = canvas.width / 2 - this.width / 2;
+                this.y = canvas.height - this.height - 30;
+                this.speed = 400;
+                this.health = 3;
+                
+                // Tiros
+                this.shootCooldown = 0;
+                this.baseShootRate = 0.4; // Segundos entre tiros
+                
+                // Powerups ativos
+                this.activePowerup = null;
+                this.powerupTimer = 0;
+            }
+
+            update(dt) {
+                // Movimento
+                if (keys.ArrowLeft || keys.a) this.x -= this.speed * dt;
+                if (keys.ArrowRight || keys.d) this.x += this.speed * dt;
+
+                // Restrição de tela
+                if (this.x < 0) this.x = 0;
+                if (this.x + this.width > canvas.width) this.x = canvas.width - this.width;
+
+                // Cooldowns
+                if (this.shootCooldown > 0) this.shootCooldown -= dt;
+                if (this.powerupTimer > 0) {
+                    this.powerupTimer -= dt;
+                    if (this.powerupTimer <= 0) {
+                        this.activePowerup = null;
+                        updateHUD();
+                    }
+                }
+
+                // Ação: Atirar
+                if (keys[' '] && this.shootCooldown <= 0) {
+                    this.shoot();
+                }
+            }
+
+            shoot() {
+                let currentRate = this.baseShootRate;
+                
+                if (this.activePowerup === 'watergun') {
+                    currentRate = 0.15; // Atira mais rápido
+                }
+
+                this.shootCooldown = currentRate;
+                createParticles(this.x + this.width/2, this.y, 5, '#00ffff'); // Efeito de saída do tiro
+
+                if (this.activePowerup === 'trident') {
+                    // Três direções
+                    bullets.push(new Bullet(this.x + this.width / 2 - 5, this.y, 0, -600, 'player'));
+                    bullets.push(new Bullet(this.x + this.width / 2 - 5, this.y, -150, -550, 'player'));
+                    bullets.push(new Bullet(this.x + this.width / 2 - 5, this.y, 150, -550, 'player'));
+                } else {
+                    // Tiro normal
+                    bullets.push(new Bullet(this.x + this.width / 2 - 5, this.y, 0, -600, 'player'));
+                }
+            }
+
+            draw(ctx) {
+                // Corpo (Camisa Laranja)
+                ctx.fillStyle = '#e67e22';
+                ctx.fillRect(this.x + 10, this.y + 20, 40, 30);
+                
+                // Calças (Verdes)
+                ctx.fillStyle = '#27ae60';
+                ctx.fillRect(this.x + 10, this.y + 50, 40, 30);
+                
+                // Cabeça
+                ctx.fillStyle = '#f1c40f'; // Loiro/Pele
+                ctx.beginPath();
+                ctx.arc(this.x + this.width/2, this.y + 10, 15, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Tridente na mão
+                ctx.strokeStyle = '#f1c40f';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(this.x + 60, this.y + 70);
+                ctx.lineTo(this.x + 60, this.y - 10);
+                ctx.moveTo(this.x + 50, this.y);
+                ctx.lineTo(this.x + 70, this.y);
+                ctx.moveTo(this.x + 50, this.y);
+                ctx.lineTo(this.x + 50, this.y - 10);
+                ctx.moveTo(this.x + 70, this.y);
+                ctx.lineTo(this.x + 70, this.y - 10);
+                ctx.stroke();
+
+                if (DEBUG) drawDebugRect(ctx, this);
+            }
+        }
+
+        class Enemy {
+            constructor() {
+                this.width = 50;
+                this.height = 50;
+                // Off-screen spawning obrigatório (surge fora da visão)
+                this.x = Math.random() * (canvas.width - this.width);
+                this.y = -100; 
+                this.vx = (Math.random() - 0.5) * 100 * waveMultiplier;
+                this.vy = (50 + Math.random() * 50) * waveMultiplier;
+                this.health = 2;
+                this.oscillation = Math.random() * Math.PI * 2; // Para movimento senoidal
+            }
+
+            update(dt) {
+                this.y += this.vy * dt;
+                this.oscillation += dt * 2;
+                this.x += Math.sin(this.oscillation) * 50 * dt; // Movimento sinuoso
+
+                // Mantém na tela horizontalmente
+                if (this.x < 0) this.x = 0;
+                if (this.x + this.width > canvas.width) this.x = canvas.width - this.width;
+            }
+
+            draw(ctx) {
+                // Corpo do Mergulhador
+                ctx.fillStyle = '#2c3e50';
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+                
+                // Máscara Cyan
+                ctx.fillStyle = '#00ffff';
+                ctx.fillRect(this.x + 10, this.y + 10, 30, 15);
+
+                // Tanque de Oxigênio (costas)
+                ctx.fillStyle = '#7f8c8d';
+                ctx.fillRect(this.x + 15, this.y - 10, 20, 20);
+
+                if (DEBUG) drawDebugRect(ctx, this);
+            }
+        }
+
+        class Bullet {
+            constructor(x, y, vx, vy, type) {
+                this.width = 10;
+                this.height = 20;
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.type = type; // 'player' ou 'enemy'
+                this.markedForDeletion = false;
+            }
+
+            update(dt) {
+                this.x += this.vx * dt;
+                this.y += this.vy * dt;
+
+                if (this.y < -50 || this.y > canvas.height + 50 || this.x < -50 || this.x > canvas.width + 50) {
+                    this.markedForDeletion = true;
+                }
+            }
+
+            draw(ctx) {
+                ctx.fillStyle = this.type === 'player' ? '#00ffff' : '#ff4757';
+                
+                // Formato de gota/agua
+                ctx.beginPath();
+                ctx.arc(this.x + this.width/2, this.y + this.height, this.width/2, 0, Math.PI);
+                ctx.lineTo(this.x + this.width/2, this.y);
+                ctx.fill();
+
+                // Brilho
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = ctx.fillStyle;
+                ctx.shadowBlur = 0; // reset
+            }
+        }
+
+        class PowerUp {
+            constructor(x, y) {
+                this.width = 30;
+                this.height = 30;
+                this.x = x;
+                this.y = y;
+                this.vy = 100;
+                this.type = Math.random() > 0.5 ? 'trident' : 'watergun';
+                this.markedForDeletion = false;
+            }
+
+            update(dt) {
+                this.y += this.vy * dt;
+                if (this.y > canvas.height + 50) this.markedForDeletion = true;
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x + this.width/2, this.y + this.height/2);
+                ctx.rotate(Date.now() / 200); // Rotação simples visual
+                
+                if (this.type === 'trident') {
+                    ctx.fillStyle = '#f1c40f'; // Dourado
+                    // Desenha um tridente simplificado
+                    ctx.fillRect(-2, -15, 4, 30);
+                    ctx.fillRect(-12, -5, 24, 4);
+                    ctx.fillRect(-12, -15, 4, 10);
+                    ctx.fillRect(8, -15, 4, 10);
+                } else {
+                    ctx.fillStyle = '#3498db'; // Azul
+                    // Desenha gota/arma
+                    ctx.beginPath();
+                    ctx.arc(0, 5, 10, 0, Math.PI*2);
+                    ctx.lineTo(0, -15);
+                    ctx.fill();
+                }
+                
+                ctx.restore();
+                if (DEBUG) drawDebugRect(ctx, this);
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 200;
+                this.vy = (Math.random() - 0.5) * 200;
+                this.size = Math.random() * 5 + 2;
+                this.life = 1.0;
+                this.color = color;
+            }
+
+            update(dt) {
+                this.x += this.vx * dt;
+                this.y += this.vy * dt;
+                this.life -= dt * 2;
+            }
+
+            draw(ctx) {
+                ctx.globalAlpha = Math.max(0, this.life);
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        class ParallaxBackground {
+            constructor() {
+                // 3 Camadas: Fundo distante (Ruínas), Meio (Pilares), Frente (Algas/Bolhas)
+                this.layers = [
+                    { y: 0, speed: 20, color: '#002244', type: 'ruins' },
+                    { y: 0, speed: 50, color: '#003366', type: 'pillars' },
+                    { y: 0, speed: 120, color: '#006644', type: 'kelp' }
+                ];
+                // Criação processual de elementos para o fundo
+                this.elements = [[], [], []];
+                this.generateElements();
+            }
+
+            generateElements() {
+                for(let l=0; l<3; l++) {
+                    for(let i=0; i<20; i++) {
+                        this.elements[l].push({
+                            x: Math.random() * canvas.width,
+                            y: Math.random() * canvas.height * 2 - canvas.height,
+                            w: Math.random() * 60 + 20,
+                            h: Math.random() * 200 + 50
+                        });
+                    }
+                }
+            }
+
+            update(dt) {
+                this.layers.forEach((layer, index) => {
+                    layer.y += layer.speed * dt;
+                    if (layer.y >= canvas.height) {
+                        layer.y -= canvas.height;
+                    }
+                });
+            }
+
+            draw(ctx) {
+                this.layers.forEach((layer, index) => {
+                    ctx.fillStyle = layer.color;
+                    ctx.save();
+                    // Simula loop rolando os elementos pra baixo
+                    this.elements[index].forEach(el => {
+                        let drawY = el.y + layer.y;
+                        if (drawY > canvas.height) drawY -= canvas.height * 2;
+                        
+                        if (layer.type === 'kelp') {
+                            // Desenha algas sinuosas
+                            ctx.beginPath();
+                            ctx.moveTo(el.x, drawY + el.h);
+                            ctx.quadraticCurveTo(el.x + 20, drawY + el.h/2, el.x, drawY);
+                            ctx.lineWidth = el.w / 4;
+                            ctx.strokeStyle = layer.color;
+                            ctx.stroke();
+                        } else {
+                            // Desenha blocos de ruínas
+                            ctx.fillRect(el.x, drawY, el.w, el.h);
+                        }
+                    });
+                    ctx.restore();
+                });
+            }
+        }
+
+        // ============================================================================
+        // 4. FUNÇÕES DO JOGO E SISTEMAS
+        // ============================================================================
+
+        function startGame() {
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            hud.classList.remove('hidden');
+            
+            player = new Player();
+            enemies = [];
+            bullets = [];
+            particles = [];
+            powerups = [];
+            parallaxLayers = new ParallaxBackground();
+            
+            score = 0;
+            waveMultiplier = 1;
+            enemySpawnTimer = 0;
+            shakeTimer = 0;
+            gameState = 'playing';
+            updateHUD();
+        }
+
+        function triggerScreenshake() {
+            shakeTimer = 0.2; // 200ms de tremor
+        }
+
+        function createParticles(x, y, count, color) {
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function updateHUD() {
+            scoreUI.innerText = score;
+            healthUI.innerText = '❤'.repeat(player.health);
+            if (player.activePowerup === 'trident') {
+                powerupStatusUI.innerText = 'Tridente Ativo!';
+                powerupStatusUI.style.color = '#f1c40f';
+            } else if (player.activePowerup === 'watergun') {
+                powerupStatusUI.innerText = 'Tiro Rápido!';
+                powerupStatusUI.style.color = '#3498db';
+            } else {
+                powerupStatusUI.innerText = '';
+            }
+        }
+
+        function gameOver() {
+            gameState = 'gameover';
+            hud.classList.add('hidden');
+            gameOverScreen.classList.remove('hidden');
+            finalScoreUI.innerText = score;
+        }
+
+        function drawDebugRect(ctx, entity) {
+            ctx.strokeStyle = 'red';
+            ctx.lineWidth = 2;
+            // Mostra hitbox realizada com 0.8 de tolerância
+            const w = entity.width * 0.8;
+            const h = entity.height * 0.8;
+            const x = entity.x + (entity.width - w) / 2;
+            const y = entity.y + (entity.height - h) / 2;
+            ctx.strokeRect(x, y, w, h);
+        }
+
+        // ============================================================================
+        // 5. UPDATE (LÓGICA PURA) E DRAW (RENDERIZAÇÃO PURA)
+        // ============================================================================
+
+        function update(dt) {
+            if (gameState !== 'playing') return; // State Machine rígida
+
+            // Background
+            parallaxLayers.update(dt);
+
+            // Tela tremendo decai
+            if (shakeTimer > 0) shakeTimer -= dt;
+
+            // Player
+            player.update(dt);
+
+            // Spawner de Inimigos (Acelera conforme a pontuação)
+            enemySpawnTimer -= dt;
+            if (enemySpawnTimer <= 0) {
+                enemies.push(new Enemy());
+                enemySpawnTimer = enemySpawnInterval / waveMultiplier;
+            }
+
+            // Aumento de dificuldade
+            waveMultiplier = 1 + (score * 0.005);
+
+            // Entidades -> Update
+            bullets.forEach(b => b.update(dt));
+            enemies.forEach(e => e.update(dt));
+            powerups.forEach(p => p.update(dt));
+            particles.forEach(p => p.update(dt));
+
+            // Colisões: Tiros vs Inimigos (Player atirando)
+            bullets.filter(b => b.type === 'player').forEach(bullet => {
+                enemies.forEach(enemy => {
+                    if (!bullet.markedForDeletion && rectIntersect(bullet, enemy)) {
+                        bullet.markedForDeletion = true;
+                        enemy.health--;
+                        
+                        // Efeito de Hit
+                        createParticles(enemy.x + enemy.width/2, enemy.y + enemy.height, 3, '#00ffff');
+
+                        if (enemy.health <= 0) {
+                            createParticles(enemy.x + enemy.width/2, enemy.y + enemy.height/2, 15, '#ff4757');
+                            score += 100;
+                            updateHUD();
+                            
+                            // Drop de Powerup (10% de chance)
+                            if (Math.random() < 0.1) {
+                                powerups.push(new PowerUp(enemy.x, enemy.y));
+                            }
+                            enemy.markedForDeletion = true;
+                        }
+                    }
+                });
+            });
+
+            // Colisões: Inimigos vs Player
+            enemies.forEach(enemy => {
+                if (rectIntersect(enemy, player)) {
+                    enemy.markedForDeletion = true;
+                    player.health--;
+                    triggerScreenshake();
+                    createParticles(player.x + player.width/2, player.y + player.height/2, 20, '#e67e22');
+                    updateHUD();
+                    
+                    if (player.health <= 0) gameOver();
+                }
+
+                // Remove inimigos que passaram da tela
+                if (enemy.y > canvas.height + 50) {
+                    enemy.markedForDeletion = true;
+                }
+            });
+
+            // Colisões: Player vs Powerup
+            powerups.forEach(powerup => {
+                if (rectIntersect(powerup, player)) {
+                    powerup.markedForDeletion = true;
+                    player.activePowerup = powerup.type;
+                    player.powerupTimer = 10; // Duração de 10 segundos
+                    createParticles(player.x + player.width/2, player.y, 10, powerup.type === 'trident' ? '#f1c40f' : '#3498db');
+                    updateHUD();
+                }
+            });
+
+            // Limpeza de arrays (Garbage Collection visual)
+            bullets = bullets.filter(b => !b.markedForDeletion);
+            enemies = enemies.filter(e => !e.markedForDeletion);
+            powerups = powerups.filter(p => !p.markedForDeletion);
+            particles = particles.filter(p => p.life > 0);
+        }
+
+        function draw(ctx) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Aplica Screenshake global
+            ctx.save();
+            if (shakeTimer > 0) {
+                const magnitude = 10 * (shakeTimer / 0.2); // Intensidade decrescente
+                const dx = (Math.random() - 0.5) * magnitude;
+                const dy = (Math.random() - 0.5) * magnitude;
+                ctx.translate(dx, dy);
+            }
+
+            // Renderiza Fundo (Mesmo no menu/gameover para manter o ambiente vivo)
+            if (parallaxLayers) parallaxLayers.draw(ctx);
+
+            if (gameState === 'playing') {
+                powerups.forEach(p => p.draw(ctx));
+                bullets.forEach(b => b.draw(ctx));
+                enemies.forEach(e => e.draw(ctx));
+                player.draw(ctx);
+                particles.forEach(p => p.draw(ctx));
+            } else if (gameState === 'gameover') {
+                // Desenha partículas residuais ao morrer
+                particles.forEach(p => p.draw(ctx));
+            }
+
+            ctx.restore(); // Restaura do Screenshake
+        }
+
+        // ============================================================================
+        // 6. ENGINE LOOP UNIFICADO E STRICT DELTA TIME
+        // ============================================================================
+
+        function gameLoop(timestamp) {
+            // Inicializa lastTime no primeiro frame (Timestamp puro)
+            if (!lastTime) lastTime = timestamp;
+            
+            // Calcula Strict Delta Time em segundos
+            let dt = (timestamp - lastTime) / 1000;
+            lastTime = timestamp;
+
+            // Cap no DT para evitar teleportes se a aba congelar (Max 100ms)
+            if (dt > 0.1) dt = 0.1;
+
+            update(dt);
+            draw(ctx);
+
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        // Inicia o ambiente gráfico imediatamente
+        parallaxLayers = new ParallaxBackground(); // Ambiente de fundo rodando no menu
+        animationId = requestAnimationFrame(gameLoop);
+
+    </script>
+</body>
+</html>

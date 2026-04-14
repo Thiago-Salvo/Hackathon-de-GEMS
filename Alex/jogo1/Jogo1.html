@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Panda Cosmic Journey</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #05050a;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow: hidden;
+      font-family: 'Courier New', monospace;
+      touch-action: none;
+      user-select: none;
+    }
+    canvas {
+      display: block;
+      background: #000;
+      box-shadow: 0 0 40px rgba(100, 200, 255, 0.1);
+      image-rendering: optimizeSpeed;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="480" height="640"></canvas>
+  <script>
+    // === 1. NOVA MECÂNICA ===
+    /* NOVA MECÂNICA: Cosmic Burst — Centraliza o jogador via tweening (easeOutQuad), concede 1.2s de invulnerabilidade e emite burst de partículas, destravado após acumular 5 ultrapassagens de obstáculos. */
+
+    // === 2. CONFIG ===
+    const CONFIG = {
+      W: 480,
+      H: 640,
+      GRAVITY: 0.38,
+      FLAP_FORCE: -7.5,
+      MAX_FALL_SPEED: 10,
+      PIPE_START_SPEED: 2.8,
+      PIPE_MAX_SPEED: 6.5,
+      PIPE_START_GAP: 155,
+      PIPE_MIN_GAP: 105,
+      PIPE_START_INTERVAL: 1600,
+      PIPE_MIN_INTERVAL: 950,
+      PANDA_X: 105, // 480 * 0.22
+      HITBOX: 14,
+      BURST_MAX: 5
+    };
+
+    // === 3. STATE ===
+    const STATE = {
+      screen: 'MENU', // MENU, PLAYING, GAME_OVER
+      score: 0,
+      highScore: parseInt(localStorage.getItem('pcj_highscore')) || 0,
+      burstMeter: 0,
+      biomeIdx: 0,
+      frames: 0,
+      pipeSpeed: CONFIG.PIPE_START_SPEED,
+      pipeGap: CONFIG.PIPE_START_GAP,
+      pipeInterval: CONFIG.PIPE_START_INTERVAL,
+      lastPipeTime: 0,
+      transitionAlpha: 0,
+      transitionText: "",
+      gameOverTimer: 0,
+      slowMoTimer: 0
+    };
+
+    // === 4. AUDIO ===
+    let AudioCtx = null;
+    function initAudio() {
+      if (!AudioCtx) AudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (AudioCtx.state === 'suspended') AudioCtx.resume();
+    }
+
+    function playSound(type) {
+      if (!AudioCtx) return;
+      const osc = AudioCtx.createOscillator();
+      const gain = AudioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(AudioCtx.destination);
+      
+      const t = AudioCtx.currentTime;
+      let duration = 0.1;
+
+      switch(type) {
+        case 'flap':
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(400, t);
+          osc.frequency.exponentialRampToValueAtTime(150, t + 0.15);
+          gain.gain.setValueAtTime(0.3, t);
+          gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
+          duration = 0.15;
+          break;
+        case 'score':
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(600, t);
+          osc.frequency.setValueAtTime(800, t + 0.05);
+          gain.gain.setValueAtTime(0.1, t);
+          gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
+          duration = 0.1;
+          break;
+        case 'burst':
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(100, t);
+          osc.frequency.linearRampToValueAtTime(800, t + 0.5);
+          gain.gain.setValueAtTime(0.4, t);
+          gain.gain.linearRampToValueAtTime(0, t + 1.2);
+          duration = 1.2;
+          break;
+        case 'hit':
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(150, t);
+          osc.frequency.exponentialRampToValueAtTime(40, t + 0.3);
+          gain.gain.setValueAtTime(0.5, t);
+          gain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
+          duration = 0.3;
+          break;
+        case 'transition':
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(880, t);
+          osc.frequency.linearRampToValueAtTime(440, t + 1);
+          gain.gain.setValueAtTime(0.2, t);
+          gain.gain.linearRampToValueAtTime(0, t + 2);
+          duration = 2.0;
+          break;
+      }
+      
+      osc.start(t);
+      osc.stop(t + duration);
+    }
+
+    // === 5. BIOMES ===
+    const BIOMES = [
+      { name: "Floresta Encantada", req: 0, mult: 1, bg: ['#0f2027', '#203a43', '#2c5364'], color: '#4CAF50' },
+      { name: "Templo nas Nuvens", req: 20, mult: 2, bg: ['#FF7E5F', '#FEB47B', '#FFD2A5'], color: '#FFD700' },
+      { name: "Estratosfera Aurora", req: 45, mult: 3, bg: ['#000428', '#004e92', '#0099ff'], color: '#00FFFF' },
+      { name: "Cosmos Profundo", req: 75, mult: 5, bg: ['#000000', '#0f0c29', '#302b63'], color: '#9D00FF' }
+    ];
+
+    // === 6. DRAWING FUNCTIONS (PROCEDURAL ASSETS) ===
+    function drawPanda(ctx, x, y, rot, isFlapping, isDead, isInvulnerable, time) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rot);
+
+      if (isInvulnerable) {
+        ctx.shadowBlur = 15 + Math.sin(time * 0.01) * 10;
+        ctx.shadowColor = '#FFF';
+        ctx.strokeStyle = `rgba(255,255,255, ${0.5 + Math.sin(time*0.02)*0.5})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, 22, 0, Math.PI*2);
+        ctx.stroke();
+      }
+
+      // Pernas
+      const legOffset = isFlapping ? Math.sin(time * 0.05) * 3 : 0;
+      ctx.fillStyle = '#111';
+      ctx.beginPath(); ctx.ellipse(-10, 12, 5, 6, -0.2, 0, Math.PI*2); ctx.fill(); // Esq tras
+      ctx.beginPath(); ctx.ellipse(10, 12, 5, 6, 0.2, 0, Math.PI*2); ctx.fill();  // Dir tras
+      ctx.beginPath(); ctx.ellipse(-12 + legOffset, 5, 5, 6, -0.5, 0, Math.PI*2); ctx.fill(); // Esq frente
+      ctx.beginPath(); ctx.ellipse(12 - legOffset, 5, 5, 6, 0.5, 0, Math.PI*2); ctx.fill(); // Dir frente
+
+      // Corpo
+      ctx.fillStyle = '#FFF';
+      ctx.beginPath();
+      ctx.ellipse(0, 4, 17, 15, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Orelhas
+      ctx.fillStyle = '#111';
+      ctx.beginPath(); ctx.arc(-12, -10, 6, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(12, -10, 6, 0, Math.PI*2); ctx.fill();
+
+      // Cabeça
+      ctx.fillStyle = '#FFF';
+      ctx.beginPath(); ctx.arc(0, -4, 15, 0, Math.PI*2); ctx.fill();
+
+      // Manchas Olhos
+      ctx.fillStyle = '#111';
+      ctx.beginPath();
+      ctx.ellipse(-6, -6, 5, 6, -0.3, 0, Math.PI*2); ctx.fill();
+      ctx.ellipse(6, -6, 5, 6, 0.3, 0, Math.PI*2); ctx.fill();
+
+      // Olhos
+      ctx.fillStyle = isDead ? '#ff0000' : '#FFF';
+      if (isDead) {
+        ctx.lineWidth = 2; ctx.strokeStyle = '#fff';
+        ctx.beginPath(); ctx.moveTo(-8,-8); ctx.lineTo(-4,-4); ctx.moveTo(-4,-8); ctx.lineTo(-8,-4); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(8,-8); ctx.lineTo(4,-4); ctx.moveTo(4,-8); ctx.lineTo(8,-4); ctx.stroke();
+      } else if (isFlapping) {
+        ctx.beginPath(); ctx.moveTo(-8, -6); ctx.lineTo(-4, -6); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(8, -6); ctx.lineTo(4, -6); ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.arc(-5.5, -6.5, 2, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(5.5, -6.5, 2, 0, Math.PI*2); ctx.fill();
+      }
+
+      // Focinho
+      ctx.fillStyle = '#111';
+      ctx.beginPath(); ctx.ellipse(0, -1, 3, 2, 0, 0, Math.PI*2); ctx.fill();
+
+      ctx.restore();
+    }
+
+    function drawPipe(ctx, x, y, w, h, isTop, biome) {
+      ctx.save();
+      ctx.translate(x, y);
+      
+      switch(biome) {
+        case 0: // Bambu
+          ctx.fillStyle = '#2d5a27';
+          ctx.fillRect(0, 0, w, h);
+          ctx.fillStyle = '#3a7533';
+          ctx.fillRect(4, 0, w-8, h);
+          ctx.fillStyle = '#1e3d1a';
+          for(let i = (isTop ? h-20 : 20); isTop ? i > 0 : i < h; i += (isTop ? -40 : 40)) {
+            ctx.fillRect(0, i, w, 4);
+          }
+          break;
+        case 1: // Templo
+          const grad = ctx.createLinearGradient(0,0,w,0);
+          grad.addColorStop(0, '#b8860b'); grad.addColorStop(0.5, '#ffd700'); grad.addColorStop(1, '#daa520');
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, w, h);
+          ctx.fillStyle = '#8b6508';
+          ctx.fillRect(-5, isTop ? h-20 : 0, w+10, 20); // Capitel/Base
+          break;
+        case 2: // Aurora Cristal
+          ctx.fillStyle = 'rgba(100, 200, 255, 0.6)';
+          ctx.strokeStyle = '#00ffff';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(w/2, isTop ? h : 0);
+          ctx.lineTo(w, isTop ? h-30 : 30);
+          ctx.lineTo(w, isTop ? 0 : h);
+          ctx.lineTo(0, isTop ? 0 : h);
+          ctx.lineTo(0, isTop ? h-30 : 30);
+          ctx.closePath();
+          ctx.fill(); ctx.stroke();
+          break;
+        case 3: // Cosmos Meteoro
+          ctx.fillStyle = '#444';
+          ctx.beginPath();
+          ctx.roundRect(0, 0, w, h, 15);
+          ctx.fill();
+          ctx.fillStyle = '#222';
+          ctx.beginPath(); ctx.arc(w*0.3, 30, 8, 0, Math.PI*2); ctx.fill();
+          ctx.beginPath(); ctx.arc(w*0.7, 70, 12, 0, Math.PI*2); ctx.fill();
+          ctx.beginPath(); ctx.arc(w*0.4, h-40, 10, 0, Math.PI*2); ctx.fill();
+          ctx.shadowBlur = 15; ctx.shadowColor = '#9D00FF';
+          ctx.strokeStyle = '#9D00FF'; ctx.lineWidth = 2;
+          ctx.stroke();
+          break;
+      }
+      ctx.restore();
+    }
+
+    // === 7. PARTICLES & EFFECTS ===
+    class Particle {
+      constructor() { this.active = false; }
+      spawn(x, y, color, speed, life) {
+        this.x = x; this.y = y; this.color = color;
+        const angle = Math.random() * Math.PI * 2;
+        const vel = Math.random() * speed;
+        this.vx = Math.cos(angle) * vel; this.vy = Math.sin(angle) * vel;
+        this.life = life; this.maxLife = life; this.active = true;
+        this.size = Math.random() * 4 + 2;
+      }
+      update(delta) {
+        if (!this.active) return;
+        this.x += this.vx * delta; this.y += this.vy * delta;
+        this.life -= delta * 0.016;
+        if (this.life <= 0) this.active = false;
+      }
+      draw(ctx) {
+        if (!this.active) return;
+        ctx.globalAlpha = Math.max(0, this.life / this.maxLife);
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    const Pool = {
+      particles: Array.from({length: 150}, () => new Particle()),
+      spawnParticle: (x, y, color, speed, life) => {
+        const p = Pool.particles.find(p => !p.active);
+        if (p) p.spawn(x, y, color, speed, life);
+      }
+    };
+
+    let screenShake = 0;
+    let flashAlpha = 0;
+    let flashColor = '#FFF';
+
+    const floatingTexts = [];
+    function spawnFloatingText(x, y, text, color) {
+      floatingTexts.push({ x, y, text, color, life: 1.0, vy: -1.5 });
+    }
+
+    // === 8. ENTITIES & PHYSICS ===
+    const Panda = {
+      x: CONFIG.PANDA_X, y: CONFIG.H / 2,
+      vy: 0, rot: 0,
+      invulnTimer: 0,
+      burstTweenTimer: 0,
+      
+      reset() {
+        this.y = CONFIG.H / 2; this.vy = 0; this.rot = 0;
+        this.invulnTimer = 0; this.burstTweenTimer = 0;
+      },
+      flap() {
+        if (this.burstTweenTimer > 0) return;
+        this.vy = CONFIG.FLAP_FORCE;
+        playSound('flap');
+        for(let i=0; i<8; i++) Pool.spawnParticle(this.x - 10, this.y + 10, '#FFF', 3, 0.5);
+      },
+      update(delta) {
+        if (this.burstTweenTimer > 0) {
+          this.burstTweenTimer -= delta * 0.016;
+          // EaseOutQuad para o centro
+          const t = 1 - Math.max(0, this.burstTweenTimer / 0.35);
+          this.y = this.y + (CONFIG.H/2 - this.y) * t;
+          this.vy = 0;
+          this.rot = 0;
+        } else {
+          this.vy += CONFIG.GRAVITY * delta;
+          if (this.vy > CONFIG.MAX_FALL_SPEED) this.vy = CONFIG.MAX_FALL_SPEED;
+          this.y += this.vy * delta;
+
+          // Rotação lerp
+          const targetRot = this.vy < 0 ? -0.4 : 1.2; // ~ -25 a 70 graus
+          this.rot += (targetRot - this.rot) * 0.15 * delta;
+        }
+
+        if (this.invulnTimer > 0) this.invulnTimer -= delta * 0.016;
+
+        // Trail particles
+        if (STATE.screen === 'PLAYING' && Math.random() > 0.5) {
+           Pool.spawnParticle(this.x - 12, this.y, BIOMES[STATE.biomeIdx].color, 1, 0.4);
+        }
+      }
+    };
+
+    class Pipe {
+      constructor() { this.active = false; }
+      spawn(x) {
+        this.x = x; this.w = 50; this.passed = false;
+        this.gap = STATE.pipeGap;
+        this.topH = Math.random() * (CONFIG.H - this.gap - 100) + 50;
+        this.bottomY = this.topH + this.gap;
+        this.bottomH = CONFIG.H - this.bottomY;
+        this.active = true;
+      }
+      update(delta) {
+        if(!this.active) return;
+        this.x -= STATE.pipeSpeed * (STATE.slowMoTimer > 0 ? 0.3 : 1) * delta;
+        if(this.x + this.w < 0) this.active = false;
+
+        // Passou
+        if(!this.passed && this.x + this.w < Panda.x) {
+          this.passed = true;
+          const pts = 1 * BIOMES[STATE.biomeIdx].mult;
+          STATE.score += pts;
+          playSound('score');
+          spawnFloatingText(Panda.x, Panda.y - 30, `+${pts}`, BIOMES[STATE.biomeIdx].color);
+          
+          if (STATE.burstMeter < CONFIG.BURST_MAX) STATE.burstMeter++;
+          checkBiomeProgress();
+        }
+      }
+      draw(ctx) {
+        if(!this.active) return;
+        drawPipe(ctx, this.x, 0, this.w, this.topH, true, STATE.biomeIdx);
+        drawPipe(ctx, this.x, this.bottomY, this.w, this.bottomH, false, STATE.biomeIdx);
+      }
+    }
+    const pipes = Array.from({length: 6}, () => new Pipe());
+
+    // === 9. SYSTEMS & LOGIC ===
+    function checkBiomeProgress() {
+      if (STATE.score >= 100 && STATE.slowMoTimer <= 0) {
+        STATE.slowMoTimer = 3.0; // Evento de câmera lenta aos 100
+        flashAlpha = 0.8; flashColor = '#9D00FF';
+        spawnFloatingText(CONFIG.W/2, CONFIG.H/2, "VELOCIDADE CÓSMICA!", "#9D00FF");
+      }
+
+      // Update Difficulty
+      const scale = Math.floor(STATE.score / 10);
+      STATE.pipeSpeed = Math.min(CONFIG.PIPE_MAX_SPEED, CONFIG.PIPE_START_SPEED + scale * 0.15);
+      STATE.pipeGap = Math.max(CONFIG.PIPE_MIN_GAP, CONFIG.PIPE_START_GAP - scale * 3);
+      STATE.pipeInterval = Math.max(CONFIG.PIPE_MIN_INTERVAL, CONFIG.PIPE_START_INTERVAL - scale * 50);
+
+      // Biome transition
+      let nextBiome = 0;
+      for(let i=BIOMES.length-1; i>=0; i--) {
+        if(STATE.score >= BIOMES[i].req) { nextBiome = i; break; }
+      }
+      
+      if (nextBiome !== STATE.biomeIdx) {
+        STATE.biomeIdx = nextBiome;
+        STATE.transitionAlpha = 1.0;
+        STATE.transitionText = BIOMES[nextBiome].name;
+        playSound('transition');
+      }
+    }
+
+    function activateBurst() {
+      if (STATE.burstMeter >= CONFIG.BURST_MAX) {
+        STATE.burstMeter = 0;
+        Panda.invulnTimer = 1.2;
+        Panda.burstTweenTimer = 0.35;
+        flashAlpha = 1.0; flashColor = '#FFF';
+        screenShake = 5;
+        playSound('burst');
+        for(let i=0; i<60; i++) Pool.spawnParticle(Panda.x, Panda.y, BIOMES[STATE.biomeIdx].color, 8, 1.5);
+      }
+    }
+
+    function checkCollisions() {
+      if (Panda.invulnTimer > 0) return; // Invulnerável
+      
+      // Chão e Teto
+      if (Panda.y + CONFIG.HITBOX > CONFIG.H || Panda.y - CONFIG.HITBOX < 0) {
+        gameOver(); return;
+      }
+
+      // Pipes
+      for(let p of pipes) {
+        if (!p.active) continue;
+        // AABB box
+        const inX = Panda.x + CONFIG.HITBOX > p.x && Panda.x - CONFIG.HITBOX < p.x + p.w;
+        const inTop = Panda.y - CONFIG.HITBOX < p.topH;
+        const inBot = Panda.y + CONFIG.HITBOX > p.bottomY;
+        
+        if (inX && (inTop || inBot)) gameOver();
+      }
+    }
+
+    function gameOver() {
+      STATE.screen = 'GAME_OVER';
+      STATE.gameOverTimer = 800; // ms cooldown
+      screenShake = 14;
+      flashAlpha = 0.8; flashColor = '#f00';
+      playSound('hit');
+      for(let i=0; i<25; i++) Pool.spawnParticle(Panda.x, Panda.y, '#f00', 5, 1);
+      
+      if (STATE.score > STATE.highScore) {
+        STATE.highScore = STATE.score;
+        localStorage.setItem('pcj_highscore', STATE.highScore);
+      }
+    }
+
+    // === 10. INPUT ===
+    let lastTapTime = 0;
+    function handleInput(e) {
+      initAudio();
+      e?.preventDefault();
+      
+      if (STATE.screen === 'MENU') {
+        STATE.screen = 'PLAYING';
+        STATE.score = 0; STATE.burstMeter = 0; STATE.biomeIdx = 0;
+        STATE.pipeSpeed = CONFIG.PIPE_START_SPEED; STATE.pipeGap = CONFIG.PIPE_START_GAP; STATE.pipeInterval = CONFIG.PIPE_START_INTERVAL;
+        pipes.forEach(p => p.active = false);
+        Panda.reset();
+        return;
+      }
+      
+      if (STATE.screen === 'GAME_OVER') {
+        if (STATE.gameOverTimer <= 0) STATE.screen = 'MENU';
+        return;
+      }
+
+      const now = performance.now();
+      const isShift = e?.key === 'Shift';
+      const isDoubleTap = (now - lastTapTime < 250);
+
+      if (isShift || isDoubleTap) {
+        activateBurst();
+      } else {
+        if (e?.key === ' ' || e?.type === 'mousedown' || e?.type === 'touchstart') {
+          Panda.flap();
+        }
+      }
+      lastTapTime = now;
+    }
+
+    window.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Shift') handleInput(e); });
+    window.addEventListener('mousedown', handleInput);
+    window.addEventListener('touchstart', handleInput, {passive: false});
+
+    // === 11. LOOP & RENDER ===
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    function resize() {
+      const scale = Math.min(window.innerWidth / CONFIG.W, window.innerHeight / CONFIG.H);
+      canvas.style.width = `${CONFIG.W * scale}px`;
+      canvas.style.height = `${CONFIG.H * scale}px`;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    let lastTime = 0;
+    function gameLoop(timestamp) {
+      const delta = Math.min((timestamp - lastTime) / 16.67, 3);
+      lastTime = timestamp;
+      STATE.frames++;
+
+      update(delta, timestamp);
+      render(timestamp);
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    function update(delta, time) {
+      if (STATE.screen === 'PLAYING') {
+        if (STATE.slowMoTimer > 0) STATE.slowMoTimer -= delta * 0.016;
+
+        Panda.update(delta);
+        
+        // Spawn pipes
+        if (time - STATE.lastPipeTime > STATE.pipeInterval) {
+          const p = pipes.find(p => !p.active);
+          if (p) { p.spawn(CONFIG.W); STATE.lastPipeTime = time; }
+        }
+        
+        pipes.forEach(p => p.update(delta));
+        Pool.particles.forEach(p => p.update(delta));
+        checkCollisions();
+      } else if (STATE.screen === 'GAME_OVER') {
+        if (STATE.gameOverTimer > 0) STATE.gameOverTimer -= delta * 16.67;
+        Panda.y += CONFIG.MAX_FALL_SPEED * delta * 0.5; // slow fall after death
+        Pool.particles.forEach(p => p.update(delta));
+      }
+
+      // Update effects
+      floatingTexts.forEach(ft => { ft.y += ft.vy * delta; ft.life -= 0.02 * delta; });
+      for(let i=floatingTexts.length-1; i>=0; i--) {
+        if(floatingTexts[i].life <= 0) floatingTexts.splice(i, 1);
+      }
+      if (screenShake > 0) { screenShake *= 0.85; if (screenShake < 0.1) screenShake = 0; }
+      if (flashAlpha > 0) { flashAlpha -= 0.05 * delta; }
+      if (STATE.transitionAlpha > 0) { STATE.transitionAlpha -= 0.01 * delta; }
+    }
+
+    function render(time) {
+      // Screen Shake application
+      ctx.save();
+      if (screenShake > 0) {
+        ctx.translate((Math.random()-0.5)*screenShake, (Math.random()-0.5)*screenShake);
+      }
+
+      // Background
+      const biome = BIOMES[STATE.biomeIdx];
+      const bgGrad = ctx.createLinearGradient(0,0,0,CONFIG.H);
+      bgGrad.addColorStop(0, biome.bg[0]); bgGrad.addColorStop(0.5, biome.bg[1]); bgGrad.addColorStop(1, biome.bg[2]);
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0,0,CONFIG.W,CONFIG.H);
+
+      // Parallax Stars/Dust
+      ctx.fillStyle = '#FFF';
+      for(let i=0; i<30; i++) {
+        const px = ((i * 37 + time * 0.02 * (i%3+1)) % CONFIG.W);
+        const py = (i * 23) % CONFIG.H;
+        ctx.globalAlpha = 0.3 + Math.sin(time*0.005 + i)*0.2;
+        ctx.fillRect(CONFIG.W - px, py, i%3+1, i%3+1);
+      }
+      ctx.globalAlpha = 1;
+
+      // Entities
+      pipes.forEach(p => p.draw(ctx));
+      Pool.particles.forEach(p => p.draw(ctx));
+      
+      const isFlapping = Panda.vy < 0 && STATE.screen === 'PLAYING';
+      drawPanda(ctx, Panda.x, Panda.y, Panda.rot, isFlapping, STATE.screen === 'GAME_OVER', Panda.invulnTimer > 0, time);
+
+      // HUD & UI
+      ctx.restore(); // reset shake
+
+      if (STATE.screen === 'PLAYING' || STATE.screen === 'GAME_OVER') {
+        // Score
+        ctx.fillStyle = '#FFF'; ctx.font = 'bold 24px "Courier New"';
+        ctx.textAlign = 'left'; ctx.fillText(`SCORE:${STATE.score}`, 15, 35);
+        ctx.textAlign = 'right'; ctx.fillText(`BEST:${STATE.highScore}`, CONFIG.W - 15, 35);
+        
+        // Biome Text
+        ctx.textAlign = 'center'; ctx.font = '16px "Courier New"';
+        ctx.fillStyle = biome.color; ctx.fillText(biome.name, CONFIG.W/2, 35);
+
+        // Burst Meter HUD
+        const bw = 150, bh = 15, bx = CONFIG.W/2 - bw/2, by = CONFIG.H - 30;
+        ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(bx, by, bw, bh);
+        ctx.fillStyle = STATE.burstMeter >= CONFIG.BURST_MAX ? (Math.sin(time*0.01)>0 ? '#FFF' : biome.color) : biome.color;
+        ctx.fillRect(bx, by, bw * (STATE.burstMeter/CONFIG.BURST_MAX), bh);
+        ctx.strokeStyle = '#FFF'; ctx.strokeRect(bx, by, bw, bh);
+        ctx.fillStyle = '#FFF'; ctx.font = '12px "Courier New"';
+        ctx.fillText(STATE.burstMeter >= CONFIG.BURST_MAX ? "SHIFT/DOUBLE TAP!" : "COSMIC BURST", CONFIG.W/2, by - 8);
+
+        // Floating texts
+        ctx.textAlign = 'center'; ctx.font = 'bold 20px "Courier New"';
+        floatingTexts.forEach(ft => {
+          ctx.globalAlpha = ft.life; ctx.fillStyle = ft.color;
+          ctx.fillText(ft.text, ft.x, ft.y);
+        });
+        ctx.globalAlpha = 1;
+      }
+
+      // Screens
+      if (STATE.screen === 'MENU') {
+        ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0,0,CONFIG.W,CONFIG.H);
+        ctx.textAlign = 'center'; ctx.fillStyle = '#FFF';
+        ctx.font = 'bold 36px "Courier New"'; ctx.fillText("PANDA COSMIC", CONFIG.W/2, CONFIG.H/3);
+        ctx.font = '24px "Courier New"'; ctx.fillText("JOURNEY", CONFIG.W/2, CONFIG.H/3 + 30);
+        
+        ctx.font = '16px "Courier New"'; ctx.fillStyle = '#aaa';
+        ctx.fillText("Espaço/Click para Voar", CONFIG.W/2, CONFIG.H/2 + 50);
+        ctx.fillText("Shift/Duplo-Tap para Burst", CONFIG.W/2, CONFIG.H/2 + 80);
+        
+        const floatY = CONFIG.H/2 - 20 + Math.sin(time*0.005)*10;
+        drawPanda(ctx, CONFIG.W/2, floatY, 0, false, false, false, time);
+      }
+
+      if (STATE.screen === 'GAME_OVER') {
+        ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillRect(0,0,CONFIG.W,CONFIG.H);
+        ctx.textAlign = 'center'; ctx.fillStyle = '#F00';
+        ctx.font = 'bold 40px "Courier New"'; ctx.fillText("GAME OVER", CONFIG.W/2, CONFIG.H/2 - 40);
+        ctx.fillStyle = '#FFF'; ctx.font = '20px "Courier New"';
+        ctx.fillText(`Score: ${STATE.score}`, CONFIG.W/2, CONFIG.H/2);
+        if(STATE.gameOverTimer <= 0) {
+          ctx.font = '16px "Courier New"';
+          ctx.globalAlpha = Math.sin(time*0.005)*0.5 + 0.5;
+          ctx.fillText("Pressione para reiniciar", CONFIG.W/2, CONFIG.H/2 + 60);
+          ctx.globalAlpha = 1;
+        }
+      }
+
+      // Transitions & Effects Overlay
+      if (STATE.transitionAlpha > 0) {
+        ctx.fillStyle = biome.color; ctx.globalAlpha = STATE.transitionAlpha * 0.3;
+        ctx.fillRect(0,0,CONFIG.W,CONFIG.H);
+        ctx.globalAlpha = STATE.transitionAlpha;
+        ctx.textAlign = 'center'; ctx.fillStyle = '#FFF'; ctx.font = 'bold 28px "Courier New"';
+        ctx.fillText(STATE.transitionText, CONFIG.W/2, CONFIG.H/2);
+        ctx.globalAlpha = 1;
+      }
+
+      if (flashAlpha > 0) {
+        ctx.fillStyle = flashColor; ctx.globalAlpha = flashAlpha;
+        ctx.fillRect(0,0,CONFIG.W,CONFIG.H); ctx.globalAlpha = 1;
+      }
+
+      // Vignette
+      const gradient = ctx.createRadialGradient(CONFIG.W/2, CONFIG.H/2, 100, CONFIG.W/2, CONFIG.H/2, CONFIG.H);
+      gradient.addColorStop(0, 'rgba(0,0,0,0)'); gradient.addColorStop(1, 'rgba(0,0,0,0.6)');
+      ctx.fillStyle = gradient; ctx.fillRect(0,0,CONFIG.W,CONFIG.H);
+    }
+
+    // === 12. INIT ===
+    function init() {
+      requestAnimationFrame(gameLoop);
+    }
+    init();
+
+  </script>
+</body>
+</html>

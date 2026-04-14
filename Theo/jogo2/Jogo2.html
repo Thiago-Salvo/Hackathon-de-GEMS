@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invasão dos Hambúrgueres - Space Invaders Clone</title>
+    <style>
+        /* ==========================================================================
+           CSS: ESTILIZAÇÃO DA PÁGINA E INTERFACE (UI)
+           ========================================================================== */
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            background-color: #050505;
+            color: #fff;
+            font-family: 'Press Start 2P', monospace;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* Container principal do jogo */
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+            border: 2px solid #333;
+            background-color: #000;
+        }
+
+        /* O Canvas onde o jogo é renderizado */
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Telas de sobreposição (Início e Game Over) */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            text-align: center;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        h1 {
+            color: #ffcc00;
+            font-size: 32px;
+            margin-bottom: 20px;
+            text-shadow: 4px 4px 0px #d32f2f;
+            line-height: 1.5;
+        }
+
+        h2 {
+            color: #fff;
+            font-size: 24px;
+            margin-bottom: 15px;
+        }
+
+        p {
+            font-size: 14px;
+            margin-bottom: 30px;
+            color: #ccc;
+            line-height: 1.6;
+            max-width: 80%;
+        }
+
+        .stats-text {
+            color: #4CAF50;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+
+        /* Botões Estilizados */
+        button {
+            padding: 15px 30px;
+            font-size: 16px;
+            font-family: 'Press Start 2P', monospace;
+            color: #fff;
+            background-color: #d32f2f;
+            border: 4px solid #fff;
+            cursor: pointer;
+            transition: transform 0.1s, background-color 0.2s;
+            box-shadow: 0 5px 0 #8b0000;
+        }
+
+        button:hover {
+            background-color: #f44336;
+            transform: translateY(-2px);
+            box-shadow: 0 7px 0 #8b0000;
+        }
+
+        button:active {
+            transform: translateY(5px);
+            box-shadow: none;
+        }
+
+        /* HUD: Heads Up Display */
+        #hud {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+            color: #fff;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        .hud-item {
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        .hud-lives {
+            color: #ff4d4d;
+        }
+
+        .hud-time {
+            color: #4da6ff;
+        }
+
+        /* Adicionando scanlines para um efeito retrô */
+        #game-container::after {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 2;
+            background-size: 100% 4px, 6px 100%;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div id="hud" class="hidden">
+            <div class="hud-item">PONTOS: <span id="score">0</span></div>
+            <div class="hud-item hud-time">TEMPO: <span id="time">0</span>s</div>
+            <div class="hud-item hud-lives">VIDAS: <span id="lives">3</span></div>
+        </div>
+
+        <div id="start-screen" class="overlay">
+            <h1>A INVASÃO DOS<br>HAMBÚRGUERES</h1>
+            <p>A frota do fast-food intergaláctico chegou!<br><br>Use as setas [ESQUERDA/DIREITA] ou [A/D] para mover.<br>Use [ESPAÇO] para atirar.</p>
+            <button id="start-btn">INICIAR JOGO</button>
+        </div>
+
+        <div id="game-over-screen" class="overlay hidden">
+            <h1>GAME OVER</h1>
+            <p>Seu estômago não aguentou o ataque!</p>
+            <div class="stats-text">TEMPO SOBREVIVIDO: <span id="final-time">0</span> segundos</div>
+            <div class="stats-text" style="color: #ffcc00; margin-bottom: 30px;">PONTUAÇÃO: <span id="final-score">0</span></div>
+            <button id="restart-btn">JOGAR NOVAMENTE</button>
+        </div>
+
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+    </div>
+
+    <script>
+        /* ==========================================================================
+           JAVASCRIPT: LÓGICA DO JOGO, CLASSES E ENGINE
+           ========================================================================== */
+
+        // Referências do DOM
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const hud = document.getElementById('hud');
+        const scoreEl = document.getElementById('score');
+        const livesEl = document.getElementById('lives');
+        const timeEl = document.getElementById('time');
+        const finalTimeEl = document.getElementById('final-time');
+        const finalScoreEl = document.getElementById('final-score');
+        const startBtn = document.getElementById('start-btn');
+        const restartBtn = document.getElementById('restart-btn');
+
+        // Constantes do Jogo
+        const GAME_WIDTH = canvas.width;
+        const GAME_HEIGHT = canvas.height;
+        
+        // Estado do Jogo
+        let gameState = 'START'; // START, PLAYING, GAME_OVER
+        let score = 0;
+        let lives = 3;
+        let startTime = 0;
+        let elapsedTime = 0;
+        let lastTime = 0;
+        let animationId;
+
+        // Entidades do jogo
+        let player;
+        let enemies = [];
+        let bullets = [];
+        let enemyBullets = [];
+        let particles = [];
+        let stars = [];
+
+        // Controle da onda de inimigos
+        let enemyDirection = 1; // 1 direita, -1 esquerda
+        let enemySpeed = 1.5;
+        let enemyDropAmount = 20;
+        let baseEnemyShootRate = 0.005; // Chance de um inimigo atirar por frame
+
+        /* ==========================================================================
+           CLASSES DO JOGO
+           ========================================================================== */
+
+        /**
+         * Classe InputHandler: Gerencia as entradas do teclado do jogador
+         */
+        class InputHandler {
+            constructor() {
+                this.keys = {
+                    left: false,
+                    right: false,
+                    space: false
+                };
+                
+                window.addEventListener('keydown', (e) => {
+                    if (e.code === 'ArrowLeft' || e.code === 'KeyA') this.keys.left = true;
+                    if (e.code === 'ArrowRight' || e.code === 'KeyD') this.keys.right = true;
+                    if (e.code === 'Space') {
+                        this.keys.space = true;
+                        e.preventDefault(); // Evita scroll da página
+                    }
+                });
+
+                window.addEventListener('keyup', (e) => {
+                    if (e.code === 'ArrowLeft' || e.code === 'KeyA') this.keys.left = false;
+                    if (e.code === 'ArrowRight' || e.code === 'KeyD') this.keys.right = false;
+                    if (e.code === 'Space') this.keys.space = false;
+                });
+            }
+        }
+        const input = new InputHandler();
+
+        /**
+         * Classe Star: Gerencia o fundo estrelado animado
+         */
+        class Star {
+            constructor() {
+                this.x = Math.random() * GAME_WIDTH;
+                this.y = Math.random() * GAME_HEIGHT;
+                this.size = Math.random() * 2;
+                this.speed = (Math.random() * 0.5) + 0.1;
+                this.brightness = Math.random();
+            }
+            update() {
+                this.y += this.speed;
+                if (this.y > GAME_HEIGHT) {
+                    this.y = 0;
+                    this.x = Math.random() * GAME_WIDTH;
+                }
+            }
+            draw(ctx) {
+                ctx.fillStyle = `rgba(255, 255, 255, ${this.brightness})`;
+                ctx.fillRect(this.x, this.y, this.size, this.size);
+            }
+        }
+
+        /**
+         * Classe Particle: Gerencia as partículas para animação de explosão
+         */
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 8;
+                this.vy = (Math.random() - 0.5) * 8;
+                this.life = 1.0; // 100%
+                this.decay = (Math.random() * 0.03) + 0.015;
+                this.color = color;
+                this.size = (Math.random() * 4) + 2;
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+                this.size *= 0.95; // Vai encolhendo
+            }
+            draw(ctx) {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, this.life);
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        /**
+         * Função Auxiliar: Cria uma explosão em uma coordenada
+         */
+        function createExplosion(x, y, isPlayer = false) {
+            const numParticles = isPlayer ? 50 : 20;
+            // Cores do hambúrguer: pão, carne, alface, tomate ou nave azul do player
+            const colors = isPlayer ? ['#00d4ff', '#ffffff', '#0040ff'] : ['#E8A317', '#654321', '#4CBB17', '#ff3333'];
+            
+            for (let i = 0; i < numParticles; i++) {
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                particles.push(new Particle(x, y, color));
+            }
+        }
+
+        /**
+         * Classe Bullet: Gerencia os tiros (do jogador e dos inimigos)
+         */
+        class Bullet {
+            constructor(x, y, velocity, isEnemy) {
+                this.x = x;
+                this.y = y;
+                this.width = isEnemy ? 6 : 4;
+                this.height = isEnemy ? 15 : 12;
+                this.velocity = velocity;
+                this.isEnemy = isEnemy;
+                this.markedForDeletion = false;
+                
+                // Tiros inimigos são como gotas de ketchup/mostarda
+                this.color = isEnemy ? (Math.random() > 0.5 ? '#ff0000' : '#ffcc00') : '#00ffff'; 
+            }
+            update() {
+                this.y += this.velocity;
+                // Deletar se sair da tela
+                if (this.y < 0 || this.y > GAME_HEIGHT) {
+                    this.markedForDeletion = true;
+                }
+            }
+            draw(ctx) {
+                ctx.save();
+                ctx.fillStyle = this.color;
+                if (this.isEnemy) {
+                    // Tiro inimigo (formato de gota)
+                    ctx.beginPath();
+                    ctx.arc(this.x + this.width/2, this.y + this.height, this.width/2, 0, Math.PI);
+                    ctx.lineTo(this.x + this.width/2, this.y);
+                    ctx.fill();
+                } else {
+                    // Tiro do jogador (Laser brilhante)
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = this.color;
+                    ctx.fillRect(this.x, this.y, this.width, this.height);
+                }
+                ctx.restore();
+            }
+        }
+
+        /**
+         * Classe Player: A nave espacial que defende a galáxia da comida processada
+         */
+        class Player {
+            constructor() {
+                this.width = 50;
+                this.height = 40;
+                this.x = GAME_WIDTH / 2 - this.width / 2;
+                this.y = GAME_HEIGHT - this.height - 20;
+                this.speed = 6;
+                this.cooldown = 0;
+                this.maxCooldown = 15; // Delay entre tiros
+                this.invulnerableTimer = 0; // Tempo de piscar após dano
+            }
+
+            update(input) {
+                // Movimentação
+                if (input.keys.left) this.x -= this.speed;
+                if (input.keys.right) this.x += this.speed;
+
+                // Limites da tela
+                if (this.x < 0) this.x = 0;
+                if (this.x + this.width > GAME_WIDTH) this.x = GAME_WIDTH - this.width;
+
+                // Atirar
+                if (this.cooldown > 0) this.cooldown--;
+                if (input.keys.space && this.cooldown === 0) {
+                    this.shoot();
+                    this.cooldown = this.maxCooldown;
+                }
+
+                // Invulnerabilidade
+                if (this.invulnerableTimer > 0) this.invulnerableTimer--;
+            }
+
+            shoot() {
+                // Cria um novo tiro saindo do centro da nave
+                bullets.push(new Bullet(this.x + this.width / 2 - 2, this.y, -10, false));
+            }
+
+            takeDamage() {
+                if (this.invulnerableTimer > 0) return; // Protegido
+                
+                lives--;
+                livesEl.innerText = lives;
+                createExplosion(this.x + this.width/2, this.y + this.height/2, true);
+                
+                if (lives <= 0) {
+                    endGame();
+                } else {
+                    this.invulnerableTimer = 90; // ~1.5 segundos a 60fps
+                }
+            }
+
+            draw(ctx) {
+                // Efeito piscar quando toma dano
+                if (this.invulnerableTimer > 0 && Math.floor(this.invulnerableTimer / 5) % 2 === 0) {
+                    return; 
+                }
+
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                // Desenho desenhado via Canvas API (Uma nave estilizada)
+                ctx.fillStyle = '#cccccc'; // Base
+                ctx.beginPath();
+                ctx.moveTo(25, 0);   // Bico
+                ctx.lineTo(50, 40);  // Asa direita
+                ctx.lineTo(40, 40);  // Entalhe direita
+                ctx.lineTo(25, 30);  // Fundo centro
+                ctx.lineTo(10, 40);  // Entalhe esquerda
+                ctx.lineTo(0, 40);   // Asa esquerda
+                ctx.closePath();
+                ctx.fill();
+
+                // Cabine
+                ctx.fillStyle = '#00ffff';
+                ctx.beginPath();
+                ctx.ellipse(25, 20, 5, 10, 0, 0, Math.PI*2);
+                ctx.fill();
+
+                // Propulsor
+                if (Math.random() > 0.3) {
+                    ctx.fillStyle = '#ff6600';
+                    ctx.beginPath();
+                    ctx.moveTo(20, 32);
+                    ctx.lineTo(25, 45 + Math.random() * 10);
+                    ctx.lineTo(30, 32);
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            }
+        }
+
+        /**
+         * Classe Enemy: O temido Hambúrguer Espacial!
+         */
+        class Enemy {
+            constructor(x, y, row) {
+                this.width = 40;
+                this.height = 30;
+                this.x = x;
+                this.y = y;
+                this.row = row; // 0 é a fileira de cima, etc.
+                this.markedForDeletion = false;
+                
+                // Pontuação baseada na fileira (fileiras superiores valem mais)
+                this.points = (4 - row) * 10;
+                
+                // Animação flutuante
+                this.floatOffset = Math.random() * Math.PI * 2;
+            }
+
+            update(time) {
+                // A movimentação principal esquerda/direita é gerenciada pelo GameManager,
+                // Aqui apenas adicionamos um pequeno efeito flutuante (wobble)
+                this.y += Math.sin(time * 0.005 + this.floatOffset) * 0.2;
+            }
+
+            shoot() {
+                enemyBullets.push(new Bullet(this.x + this.width / 2, this.y + this.height, 5, true));
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                const w = this.width;
+                const h = this.height;
+
+                // --- DESENHO DETALHADO DO HAMBÚRGUER ---
+                
+                // Pão Superior
+                ctx.fillStyle = '#E8A317'; // Cor de pão
+                ctx.beginPath();
+                // Arco para o topo do pão
+                ctx.moveTo(0, h * 0.3);
+                ctx.quadraticCurveTo(w / 2, -h * 0.2, w, h * 0.3);
+                ctx.lineTo(w, h * 0.3);
+                ctx.lineTo(0, h * 0.3);
+                ctx.fill();
+                
+                // Sementes de gergelim
+                ctx.fillStyle = '#fff9d6';
+                ctx.fillRect(w * 0.2, h * 0.1, 2, 2);
+                ctx.fillRect(w * 0.5, h * 0.05, 2, 2);
+                ctx.fillRect(w * 0.8, h * 0.1, 2, 2);
+                ctx.fillRect(w * 0.35, h * 0.15, 2, 2);
+                ctx.fillRect(w * 0.65, h * 0.15, 2, 2);
+
+                // Alface
+                ctx.fillStyle = '#4CBB17';
+                ctx.beginPath();
+                ctx.moveTo(-2, h * 0.3);
+                for (let i = 0; i <= w + 4; i += 4) {
+                    ctx.lineTo(i - 2, h * 0.3 + (i % 8 === 0 ? 3 : 0));
+                }
+                ctx.lineTo(w + 2, h * 0.4);
+                ctx.lineTo(-2, h * 0.4);
+                ctx.fill();
+
+                // Tomate (Linha vermelha)
+                ctx.fillStyle = '#ff3333';
+                ctx.fillRect(w * 0.05, h * 0.4, w * 0.9, h * 0.1);
+
+                // Carne
+                ctx.fillStyle = '#654321';
+                ctx.beginPath();
+                ctx.roundRect(w * 0.02, h * 0.5, w * 0.96, h * 0.25, 4);
+                ctx.fill();
+
+                // Queijo (derretendo)
+                ctx.fillStyle = '#FFD700';
+                ctx.beginPath();
+                ctx.moveTo(w * 0.05, h * 0.5);
+                ctx.lineTo(w * 0.95, h * 0.5);
+                ctx.lineTo(w * 0.95, h * 0.6);
+                ctx.lineTo(w * 0.8, h * 0.7); // Gota de queijo 1
+                ctx.lineTo(w * 0.65, h * 0.6);
+                ctx.lineTo(w * 0.4, h * 0.75); // Gota de queijo 2
+                ctx.lineTo(w * 0.25, h * 0.6);
+                ctx.lineTo(w * 0.05, h * 0.6);
+                ctx.fill();
+
+                // Pão Inferior
+                ctx.fillStyle = '#E8A317';
+                ctx.beginPath();
+                ctx.roundRect(w * 0.05, h * 0.75, w * 0.9, h * 0.25, [0, 0, 5, 5]);
+                ctx.fill();
+
+                // Olhos malignos vermelhos para dar aspecto de inimigo
+                ctx.fillStyle = '#ff0000';
+                ctx.shadowBlur = 5;
+                ctx.shadowColor = '#ff0000';
+                ctx.fillRect(w * 0.25, h * 0.55, 6, 4); // Olho esquerdo
+                ctx.fillRect(w * 0.65, h * 0.55, 6, 4); // Olho direito
+                ctx.shadowBlur = 0; // reseta shadow
+
+                ctx.restore();
+            }
+        }
+
+        /* ==========================================================================
+           LÓGICA PRINCIPAL DO JOGO (GAME MANAGER)
+           ========================================================================== */
+
+        /**
+         * Inicializa o cenário de estrelas (background)
+         */
+        function initStars() {
+            stars = [];
+            for (let i = 0; i < 100; i++) {
+                stars.push(new Star());
+            }
+        }
+
+        /**
+         * Cria a onda de hambúrgueres inimigos
+         */
+        function spawnEnemies() {
+            enemies = [];
+            enemyDirection = 1;
+            
+            const rows = 4;
+            const cols = 10;
+            const paddingX = 60;
+            const paddingY = 50;
+            const startX = 100;
+            const startY = 60;
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const ex = startX + c * paddingX;
+                    const ey = startY + r * paddingY;
+                    enemies.push(new Enemy(ex, ey, r));
+                }
+            }
+            
+            // Aumenta a velocidade e a taxa de tiro levemente a cada nova onda
+            enemySpeed += 0.2;
+            baseEnemyShootRate += 0.001;
+        }
+
+        /**
+         * Inicia a partida resetando variáveis
+         */
+        function startGame() {
+            gameState = 'PLAYING';
+            score = 0;
+            lives = 3;
+            elapsedTime = 0;
+            startTime = Date.now();
+            enemySpeed = 1.0;
+            baseEnemyShootRate = 0.005;
+
+            scoreEl.innerText = score;
+            livesEl.innerText = lives;
+            timeEl.innerText = '0';
+
+            player = new Player();
+            bullets = [];
+            enemyBullets = [];
+            particles = [];
+            
+            spawnEnemies();
+
+            // Manipulação de UI
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            hud.classList.remove('hidden');
+
+            lastTime = performance.now();
+            if(animationId) cancelAnimationFrame(animationId);
+            gameLoop(lastTime);
+        }
+
+        /**
+         * Encerra a partida e exibe a tela de Game Over
+         */
+        function endGame() {
+            gameState = 'GAME_OVER';
+            hud.classList.add('hidden');
+            gameOverScreen.classList.remove('hidden');
+            
+            finalTimeEl.innerText = elapsedTime;
+            finalScoreEl.innerText = score;
+        }
+
+        /**
+         * Checa se dois retângulos colidem (AABB - Axis-Aligned Bounding Box)
+         */
+        function checkCollision(rect1, rect2) {
+            return (
+                rect1.x < rect2.x + rect2.width &&
+                rect1.x + rect1.width > rect2.x &&
+                rect1.y < rect2.y + rect2.height &&
+                rect1.y + rect1.height > rect2.y
+            );
+        }
+
+        /**
+         * Lida com a movimentação, colisão e lógica de tiro dos inimigos
+         */
+        function handleEnemies(time) {
+            let hitEdge = false;
+            let lowestEnemyY = 0;
+
+            // Encontra os inimigos que estão na linha de frente (parte inferior de cada coluna)
+            // para permitir que atirem
+            let bottomEnemies = {};
+            
+            enemies.forEach(enemy => {
+                // Atualiza wobble
+                enemy.update(time);
+                
+                // Move horizontalmente
+                enemy.x += enemySpeed * enemyDirection;
+
+                // Verifica colisão com as bordas da tela
+                if (enemy.x <= 0 || enemy.x + enemy.width >= GAME_WIDTH) {
+                    hitEdge = true;
+                }
+
+                // Verifica inimigo mais baixo para condição de game over
+                if (enemy.y + enemy.height > lowestEnemyY) {
+                    lowestEnemyY = enemy.y + enemy.height;
+                }
+
+                // Agrupa para tiro (pegar o inimigo mais baixo de cada coluna aproximada)
+                const col = Math.floor(enemy.x / 60); 
+                if (!bottomEnemies[col] || enemy.y > bottomEnemies[col].y) {
+                    bottomEnemies[col] = enemy;
+                }
+            });
+
+            // Se atingir a borda, inverte a direção e desce a tropa
+            if (hitEdge) {
+                enemyDirection *= -1;
+                enemies.forEach(enemy => {
+                    // Impede que saiam da tela e travem
+                    enemy.x += enemyDirection * Math.abs(enemySpeed) * 2; 
+                    enemy.y += enemyDropAmount;
+                });
+            }
+
+            // Inimigos atiram aleatoriamente (dificuldade média)
+            Object.values(bottomEnemies).forEach(enemy => {
+                // A chance de tiro é baseada na variável baseEnemyShootRate e no frame atual
+                if (Math.random() < baseEnemyShootRate) {
+                    enemy.shoot();
+                }
+            });
+
+            // Condição de Game Over: Inimigos tocaram o jogador
+            if (lowestEnemyY >= player.y) {
+                endGame();
+            }
+
+            // Checar se a onda foi derrotada
+            if (enemies.length === 0) {
+                spawnEnemies();
+            }
+        }
+
+        /**
+         * Gerencia atualizações e colisões de todos os tiros
+         */
+        function handleProjectiles() {
+            // Atualiza tiros do jogador
+            bullets.forEach(bullet => {
+                bullet.update();
+                
+                // Checa colisão com inimigos
+                enemies.forEach(enemy => {
+                    if (!bullet.markedForDeletion && !enemy.markedForDeletion) {
+                        if (checkCollision(bullet, enemy)) {
+                            bullet.markedForDeletion = true;
+                            enemy.markedForDeletion = true;
+                            
+                            // Adiciona pontuação
+                            score += enemy.points;
+                            scoreEl.innerText = score;
+                            
+                            // Explosão
+                            createExplosion(enemy.x + enemy.width/2, enemy.y + enemy.height/2, false);
+                        }
+                    }
+                });
+            });
+
+            // Atualiza tiros inimigos
+            enemyBullets.forEach(bullet => {
+                bullet.update();
+                
+                // Checa colisão com o jogador
+                if (!bullet.markedForDeletion) {
+                    if (checkCollision(bullet, player)) {
+                        bullet.markedForDeletion = true;
+                        player.takeDamage();
+                    }
+                }
+            });
+
+            // Limpa tiros e inimigos destruídos ou fora da tela
+            bullets = bullets.filter(bullet => !bullet.markedForDeletion);
+            enemyBullets = enemyBullets.filter(bullet => !bullet.markedForDeletion);
+            enemies = enemies.filter(enemy => !enemy.markedForDeletion);
+        }
+
+        /**
+         * Atualiza e desenha as partículas (explosões)
+         */
+        function handleParticles(ctx) {
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw(ctx);
+            });
+            // Remove partículas mortas
+            particles = particles.filter(particle => particle.life > 0);
+        }
+
+        /**
+         * Loop Principal do Jogo
+         */
+        function gameLoop(timestamp) {
+            // Delta time (opcional, aqui estamos usando lógica baseada em frame para simplicidade, 
+            // mas o timestamp ajuda na fluidez geral de certas animações).
+            
+            // Limpa o canvas
+            ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+            // 1. Desenha o fundo estrelado
+            stars.forEach(star => {
+                star.update();
+                star.draw(ctx);
+            });
+
+            if (gameState === 'PLAYING') {
+                // Atualiza temporizador de sobrevivência
+                const now = Date.now();
+                elapsedTime = Math.floor((now - startTime) / 1000);
+                timeEl.innerText = elapsedTime;
+
+                // Atualizações de Entidades
+                player.update(input);
+                handleEnemies(timestamp);
+                handleProjectiles();
+
+                // Desenho
+                player.draw(ctx);
+                enemies.forEach(enemy => enemy.draw(ctx));
+                bullets.forEach(bullet => bullet.draw(ctx));
+                enemyBullets.forEach(bullet => bullet.draw(ctx));
+                handleParticles(ctx);
+
+                // Solicita próximo frame
+                animationId = requestAnimationFrame(gameLoop);
+            } 
+            else if (gameState === 'START' || gameState === 'GAME_OVER') {
+                // Desenha estrelas e partículas ao fundo mesmo nas telas de menu
+                handleParticles(ctx);
+                animationId = requestAnimationFrame(gameLoop);
+            }
+        }
+
+        /* ==========================================================================
+           INICIALIZAÇÃO E EVENT LISTENERS
+           ========================================================================== */
+           
+        // Eventos de clique para os botões UI
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+
+        // Inicializa o visual do fundo (estrelas) assim que a página carregar
+        initStars();
+        
+        // Inicia o loop de animação para as telas de menu rolarem o fundo
+        animationId = requestAnimationFrame(gameLoop);
+
+    </script>
+</body>
+</html>

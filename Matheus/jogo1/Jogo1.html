@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ABYSS INVADERS - YELLOW SUBMARINE EDITION</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌊</text></svg>">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+        body {
+            background: #000;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Share Tech Mono', monospace;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 
+                0 0 0 2px #00ffcc,
+                0 0 20px rgba(0,255,204,0.4),
+                0 0 60px rgba(0,255,204,0.15);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        /* Scanlines CRT - Não cobre a areia (últimos 52px) */
+        #game-container::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 548px; 
+            background: repeating-linear-gradient(
+                0deg, transparent, transparent 2px,
+                rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px
+            );
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        /* Vinheta radial */
+        #game-container::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,20,0.6) 100%);
+            pointer-events: none;
+            z-index: 101;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container"></div>
+
+<script>
+/** * ABYSS INVADERS - YELLOW SUBMARINE EDITION
+ * Dev: Desenvolvimento de Jogos (Senior Profile)
+ */
+
+class BootScene extends Phaser.Scene {
+    constructor() { super('BootScene'); }
+
+    preload() {
+        // Assets Externos
+        this.load.image('creature1', 'assets/abyssal_creatures_sprites/Creature_1.png');
+        this.load.image('creature2', 'assets/abyssal_creatures_sprites/Creature_2.png');
+        this.load.image('creature3', 'assets/abyssal_creatures_sprites/Creature_3.png');
+        this.load.image('creature4', 'assets/abyssal_creatures_sprites/Creature_4.png');
+        this.load.image('creature5', 'assets/abyssal_creatures_sprites/Creature_5.png');
+        
+        this.load.image('algae', 'assets/coral_sprites/algae2.png');
+        this.load.image('concha', 'assets/coral_sprites/Concha.png');
+        this.load.image('coral1', 'assets/coral_sprites/Coral1.png');
+        this.load.image('coral3', 'assets/coral_sprites/Coral3.png');
+        this.load.image('rock', 'assets/coral_sprites/rock.png');
+        this.load.image('chest', 'assets/coral_sprites/chest.png');
+    }
+
+    create() {
+        this.generateProceduralTextures();
+        this.scene.start('MainMenu');
+    }
+
+    generateProceduralTextures() {
+        if (this.textures.exists('player')) return;
+
+        const g = this.add.graphics();
+
+        // Heart
+        g.clear();
+        g.fillStyle(0xff3366);
+        g.fillCircle(8, 8, 6);
+        g.fillCircle(16, 8, 6);
+        g.fillTriangle(2, 10, 22, 10, 12, 22);
+        g.generateTexture('heart', 24, 24);
+
+        // bgBubble
+        g.clear();
+        g.lineStyle(2, 0xaaffff);
+        g.strokeCircle(8, 8, 6);
+        g.generateTexture('bgBubble', 16, 16);
+
+        // Player (Submarino Amarelo)
+        g.clear();
+        g.fillStyle(0xffff00); // Corpo
+        g.fillRoundedRect(5, 10, 30, 15, 8);
+        g.fillRect(18, 2, 4, 10); // Torre
+        g.fillRect(20, 2, 6, 3);  // Antena
+        g.fillStyle(0x003366); // Janelas
+        g.fillCircle(12, 17, 2.5);
+        g.fillCircle(20, 17, 2.5);
+        g.fillCircle(28, 17, 2.5);
+        g.fillStyle(0xff9900); // Hélice
+        g.fillRect(0, 14, 5, 7);
+        g.generateTexture('player', 40, 30);
+
+        // Projétil Jogador (Bubble)
+        g.clear();
+        g.lineStyle(2, 0x00ffcc);
+        g.strokeCircle(6, 6, 5);
+        g.generateTexture('bubble', 12, 12);
+
+        // Enemy Shot (Orbe Abissal)
+        g.clear();
+        g.fillStyle(0x660099, 0.25); g.fillEllipse(7, 2, 5, 8);
+        g.fillStyle(0x9900cc, 0.40); g.fillEllipse(7, 5, 4, 6);
+        g.fillStyle(0xcc00ff, 0.30); g.fillCircle(7, 14, 6);
+        g.fillStyle(0xee44ff, 0.85); g.fillCircle(7, 14, 4);
+        g.fillStyle(0xffffff, 1);    g.fillCircle(7, 14, 2);
+        g.fillStyle(0xffffff, 0.7);  g.fillCircle(6, 13, 1);
+        g.generateTexture('enemy_shot', 14, 22);
+
+        // Coral Barrier
+        g.clear();
+        g.fillStyle(0x00cc66);
+        g.fillRoundedRect(0, 0, 60, 40, 10);
+        g.generateTexture('coral', 60, 40);
+
+        // Particle
+        g.clear();
+        g.fillStyle(0xffffff);
+        g.fillCircle(2, 2, 2);
+        g.generateTexture('particle', 4, 4);
+
+        g.destroy();
+    }
+}
+
+class MainMenu extends Phaser.Scene {
+    constructor() { super('MainMenu'); }
+
+    create() {
+        this._buildMenuOcean();
+        
+        // Painel Central
+        const panel = this.add.graphics();
+        panel.fillStyle(0x000d1a, 0.88);
+        panel.fillRoundedRect(120, 130, 560, 300, 6);
+        panel.lineStyle(2, 0x00ffcc, 0.9);
+        panel.strokeRoundedRect(120, 130, 560, 300, 6);
+        
+        // Brackets decorativos
+        this._drawBrackets(panel, 120, 130, 560, 300);
+
+        // Textos
+        const title = this.add.text(400, 202, 'ABYSS INVADERS', { 
+            fontFamily: 'Share Tech Mono', fontSize: '46px', color: '#00ffcc' 
+        }).setOrigin(0.5);
+        
+        this.tweens.add({
+            targets: title, alpha: 0.85, duration: 1800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+        });
+
+        this.add.text(400, 250, '— YELLOW SUBMARINE EDITION —', { 
+            fontFamily: 'Share Tech Mono', fontSize: '13px', color: '#ffcc00' 
+        }).setOrigin(0.5);
+
+        // Status lines
+        const statusConfig = { fontFamily: 'Share Tech Mono', fontSize: '13px', color: '#4488aa' };
+        this.add.text(190, 292, '> PROFUNDIDADE: 7800m', statusConfig);
+        this.add.text(190, 312, '> CRIATURAS ABISSAIS DETECTADAS: 55', statusConfig);
+        this.add.text(190, 332, '> STATUS DO SUBMARINO: OPERACIONAL', statusConfig);
+        this.add.text(190, 352, '> PROTOCOLO: ELIMINAÇÃO TOTAL', statusConfig);
+
+        // Botão Play
+        const startBtn = this.add.text(400, 460, '[ MERGULHAR ]', { 
+            fontFamily: 'Share Tech Mono', fontSize: '24px', color: '#00ffcc' 
+        }).setOrigin(0.5).setInteractive();
+
+        this.tweens.add({
+            targets: startBtn, alpha: 0.3, duration: 600, yoyo: true, repeat: -1, ease: 'Stepped'
+        });
+
+        startBtn.on('pointerdown', () => {
+            this.cameras.main.fadeOut(400, 0, 0, 0);
+            this.cameras.main.once('camerafadeoutcomplete', () => {
+                this.scene.start('GameScene');
+            });
+        });
+
+        this.input.keyboard.on('keydown-SPACE', () => startBtn.emit('pointerdown'));
+    }
+
+    _buildMenuOcean() {
+        const h = 600, w = 800;
+        const g = this.add.graphics();
+        
+        // Gradiente vertical simples
+        for(let i=0; i<20; i++) {
+            let color = Phaser.Display.Color.Interpolate.ColorWithColor(
+                Phaser.Display.Color.ValueToColor(0x0a1a4a),
+                Phaser.Display.Color.ValueToColor(0x000510),
+                20, i
+            );
+            g.fillStyle(Phaser.Display.Color.GetColor(color.r, color.g, color.b));
+            g.fillRect(0, i * (h/20), w, h/20);
+        }
+
+        // Areia
+        g.fillStyle(0xb89560);
+        g.fillRect(0, 548, w, 52);
+
+        // Bolhas
+        this.add.particles('bgBubble').createEmitter({
+            x: { min: 0, max: 800 }, y: 620,
+            speedY: { min: -100, max: -40 },
+            scale: { start: 0.2, end: 0.5 },
+            alpha: { start: 0.3, end: 0 },
+            frequency: 150, blendMode: 'ADD'
+        });
+
+        // Criaturas decorativas
+        this._spawnMenuCreatures();
+    }
+
+    _spawnMenuCreatures() {
+        const data = [
+            { key: 'creature1', x: 130, y: 420, s: 0.35, a: 0.25 },
+            { key: 'creature3', x: 660, y: 390, s: 0.4, a: 0.2 },
+            { key: 'creature5', x: 400, y: 480, s: 0.3, a: 0.15 }
+        ];
+        data.forEach(d => {
+            const c = this.add.image(d.x, d.y, d.key).setScale(d.s).setAlpha(d.a);
+            this.tweens.add({
+                targets: c, y: d.y - 12, duration: 2800 + Math.random()*1000,
+                yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+            });
+        });
+    }
+
+    _drawBrackets(g, x, y, w, h) {
+        g.lineStyle(2, 0x00ffcc, 1);
+        const len = 14;
+        // TL
+        g.lineBetween(x, y, x + len, y); g.lineBetween(x, y, x, y + len);
+        // TR
+        g.lineBetween(x+w, y, x+w-len, y); g.lineBetween(x+w, y, x+w, y + len);
+        // BL
+        g.lineBetween(x, y+h, x+len, y+h); g.lineBetween(x, y+h, x, y+h-len);
+        // BR
+        g.lineBetween(x+w, y+h, x+w-len, y+h); g.lineBetween(x+w, y+h, x+w, y+h-len);
+    }
+}
+
+class GameScene extends Phaser.Scene {
+    constructor() { super('GameScene'); }
+
+    init() {
+        this.score = 0;
+        this.lives = 3;
+        this.wave = 1;
+        this.canShoot = true;
+        this.enemyDirection = 1;
+        this.parallaxOffsets = [0, 0, 0];
+    }
+
+    create() {
+        this.cameras.main.fadeIn(400);
+        this.createOceanAmbience();
+
+        // Grupos
+        this.playerBullets = this.physics.add.group();
+        this.enemyBullets = this.physics.add.group();
+        this.enemies = this.physics.add.group();
+        this.barriers = this.physics.add.group();
+
+        // Player
+        this.player = this.physics.add.sprite(400, 520, 'player').setDepth(5).setCollideWorldBounds(true);
+        
+        // HUD
+        this.createHUD();
+        this.spawnBarriers();
+        this.spawnWave();
+
+        // Input
+        this.cursors = this.input.keyboard.createCursorKeys();
+        this.input.on('pointerdown', () => this.shoot());
+
+        // Timer de tiro inimigo
+        this.enemyFireTimer = this.time.addEvent({
+            delay: 1000, callback: this.enemyFire, callbackScope: this, loop: true
+        });
+
+        // Colisões
+        this.physics.add.overlap(this.playerBullets, this.enemies, this.hitEnemy, null, this);
+        this.physics.add.overlap(this.enemyBullets, this.player, this.hitPlayer, null, this);
+        this.physics.add.overlap(this.playerBullets, this.barriers, this.hitBarrier, null, this);
+        this.physics.add.overlap(this.enemyBullets, this.barriers, this.hitBarrier, null, this);
+    }
+
+    update() {
+        // Player Move
+        if (this.cursors.left.isDown) this.player.setVelocityX(-300);
+        else if (this.cursors.right.isDown) this.player.setVelocityX(300);
+        else this.player.setVelocityX(0);
+
+        if (this.cursors.space.isDown) this.shoot();
+
+        // Parallax Update
+        this.updateParallax();
+
+        // Enemy Collective Logic
+        this.updateEnemies();
+    }
+
+    shoot() {
+        if (!this.canShoot || !this.player.active) return;
+        const b = this.playerBullets.create(this.player.x, this.player.y - 20, 'bubble');
+        b.setVelocityY(-450);
+        this.canShoot = false;
+        this.time.delayedCall(400, () => this.canShoot = true);
+    }
+
+    spawnWave() {
+        const count = 55;
+        const speed = 30 + this.wave * 10;
+        
+        for(let row=0; row<5; row++) {
+            for(let col=0; col<11; col++) {
+                const enemy = this.enemies.create(100 + col*55, 80 + row*60, `creature${row+1}`);
+                enemy.setOrigin(0.5).setScale(0.5).setDepth(3);
+                enemy.scoreValue = (5 - row) * 10;
+                enemy.body.setVelocityX(speed);
+            }
+        }
+        this._showWaveAnnouncement();
+    }
+
+    updateEnemies() {
+        let edge = false;
+        const count = this.enemies.countActive();
+        const speedMult = 1 + (55 - count) / 55;
+
+        this.enemies.children.iterate(e => {
+            if (!e || !e.active) return;
+            if (e.x > 780 || e.x < 20) edge = true;
+        });
+
+        if (edge) {
+            this.enemyDirection *= -1;
+            const currentSpeed = (30 + this.wave * 10) * speedMult;
+            this.enemies.children.iterate(e => {
+                if (!e) return;
+                e.x += (this.enemyDirection * 5);
+                e.y += 15;
+                e.body.setVelocityX(currentSpeed * this.enemyDirection);
+            });
+        }
+    }
+
+    enemyFire() {
+        const aliveOnes = this.enemies.getMatching('active', true);
+        if (aliveOnes.length > 0) {
+            const shooter = Phaser.Utils.Array.GetRandom(aliveOnes);
+            const bullet = this.enemyBullets.create(shooter.x, shooter.y, 'enemy_shot');
+            bullet.setVelocityY(250 + this.wave * 20).setDepth(4);
+        }
+    }
+
+    hitEnemy(bullet, enemy) {
+        bullet.destroy();
+        this.score += enemy.scoreValue;
+        
+        // Explosion
+        const emitter = this.add.particles('particle').createEmitter({
+            x: enemy.x, y: enemy.y, speed: { min: 50, max: 150 },
+            scale: { start: 1, end: 0 }, lifespan: 400,
+            quantity: 12, blendMode: 'ADD'
+        });
+        this.time.delayedCall(400, () => emitter.stop());
+
+        enemy.destroy();
+        this.updateHUD();
+
+        if (this.enemies.countActive() === 0) {
+            this.wave++;
+            this.enemyFireTimer.delay = Math.max(200, 1000 - this.wave*100);
+            this.time.delayedCall(1000, () => this.spawnWave());
+        }
+    }
+
+    hitPlayer(player, bullet) {
+        bullet.destroy();
+        this.lives--;
+        this.cameras.main.shake(120, 0.012);
+        
+        // Update Hearts
+        const heartIdx = this.lives;
+        if (this.hearts && this.hearts[heartIdx]) {
+            this.tweens.add({
+                targets: this.hearts[heartIdx], scale: 1.6, alpha: 0, duration: 250, ease: 'Back.easeIn'
+            });
+        }
+
+        if (this.lives <= 0) {
+            this.player.setActive(false).setVisible(false);
+            this.time.delayedCall(300, () => this.scene.start('GameOver', { score: this.score, wave: this.wave }));
+        }
+    }
+
+    hitBarrier(bullet, barrier) {
+        bullet.destroy();
+        barrier.health--;
+        barrier.setAlpha(barrier.health / 5);
+        if (barrier.health <= 0) barrier.destroy();
+    }
+
+    // --- AMBIENCIA E VISUAIS ---
+
+    createOceanAmbience() {
+        const w = 800, h = 600;
+        // 10.1 Gradiente
+        this.bgGraphics = this.add.graphics().setDepth(-30);
+        for(let i=0; i<24; i++) {
+            let color = Phaser.Display.Color.Interpolate.ColorWithColor(
+                Phaser.Display.Color.ValueToColor(0x244fc7),
+                Phaser.Display.Color.ValueToColor(0x041238),
+                24, i
+            );
+            this.bgGraphics.fillStyle(Phaser.Display.Color.GetColor(color.r, color.g, color.b));
+            this.bgGraphics.fillRect(0, i * (h/24), w, h/24);
+        }
+        // Escurecimento
+        this.bgGraphics.fillStyle(0x020814, 0.28);
+        this.bgGraphics.fillRect(0, 430, 800, 170);
+
+        // Luzes
+        for(let i=0; i<3; i++) {
+            const lx = 100 + i*250;
+            this.add.graphics().fillStyle(0x9ec5ff, 0.07).fillTriangle(lx, 0, lx-100, 600, lx+200, 600).setDepth(-29);
+        }
+
+        // Areia (10.2)
+        const sand = this.add.graphics().setDepth(-5);
+        sand.fillStyle(0xc2a56c);
+        sand.fillRect(0, 548, 800, 52);
+        for(let i=0; i<40; i++) {
+            sand.fillStyle(0xd7bb83, 0.5);
+            sand.fillEllipse(Math.random()*800, 548 + Math.random()*52, 10 + Math.random()*20, 5 + Math.random()*10);
+        }
+
+        // Parallax Layers (10.3)
+        this.parallaxG = [
+            this.add.graphics().setDepth(-25),
+            this.add.graphics().setDepth(-18),
+            this.add.graphics().setDepth(-8)
+        ];
+
+        // Bubbles (10.4)
+        this.add.particles('bgBubble').createEmitter({
+            x: { min: 20, max: 780 }, y: 590, speedY: { min: -90, max: -40 },
+            scale: { start: 0.15, end: 0.6 }, alpha: { start: 0, end: 0.45 },
+            frequency: 220, blendMode: 'ADD'
+        });
+
+        // 10.6 Decoração
+        this.createDecorativeCorals();
+    }
+
+    createDecorativeCorals() {
+        const floor = 548;
+        const zones = [
+            { x: 22, k: 'rock', s: 0.12, d: -4, sw: false, y: floor+25 },
+            { x: 72, k: 'chest', s: 0.07, d: -3, sw: false, y: floor+10 },
+            { x: 168, k: 'coral1', s: 0.58, d: -1, sw: true, y: floor+5 },
+            { x: 338, k: 'coral1', s: 0.85, d: -3, sw: true, y: floor+5 },
+            { x: 372, k: 'concha', s: 0.30, d: -2, sw: false, y: floor+20 },
+            { x: 648, k: 'coral3', s: 0.42, d: -3, sw: true, y: floor+5 }
+        ];
+
+        zones.forEach(z => {
+            const item = this.add.image(z.x, z.y, z.k).setScale(z.s).setDepth(z.d).setOrigin(0.5, 1);
+            if (z.sw) {
+                this.tweens.add({
+                    targets: item, angle: 2.5, duration: 2000 + Math.random()*1400,
+                    yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+                });
+            }
+        });
+    }
+
+    updateParallax() {
+        const speeds = [0.08, 0.18, 0.35];
+        const colors = [0x17389f, 0x0f2d87, 0x021a63];
+        const basesY = [470, 520, 565];
+
+        for(let i=0; i<3; i++) {
+            this.parallaxOffsets[i] -= speeds[i];
+            const g = this.parallaxG[i];
+            g.clear();
+            g.fillStyle(colors[i]);
+            
+            const offset = this.parallaxOffsets[i] % 800;
+            this.drawHillChain(g, offset, basesY[i]);
+            this.drawHillChain(g, offset + 800, basesY[i]);
+        }
+    }
+
+    drawHillChain(g, startX, baseY) {
+        g.beginPath();
+        g.moveTo(startX, 600);
+        for(let x=0; x<=800; x+=100) {
+            const h = (x % 200 === 0) ? 40 : 15;
+            g.lineTo(startX + x, baseY - h);
+        }
+        g.lineTo(startX + 800, 600);
+        g.closePath();
+        g.fillPath();
+    }
+
+    createHUD() {
+        const bar = this.add.graphics().setDepth(20);
+        bar.fillStyle(0x000d1a, 0.92);
+        bar.fillRect(0, 0, 800, 50);
+        bar.lineStyle(2, 0x00ffcc, 0.7);
+        bar.lineBetween(0, 50, 800, 50);
+
+        const labelStyle = { fontFamily: 'Share Tech Mono', fontSize: '9px', color: '#005544' };
+        const valStyle = { fontFamily: 'Share Tech Mono', fontSize: '20px', color: '#00ffcc' };
+
+        this.scoreText = this.add.text(14, 20, '000000', valStyle).setDepth(21);
+        this.add.text(14, 8, 'PONTOS', labelStyle).setDepth(21);
+
+        this.waveText = this.add.text(234, 20, 'W-01', valStyle).setDepth(21).setColor('#ffcc00');
+        this.add.text(234, 8, 'ONDA', labelStyle).setDepth(21);
+
+        this.add.text(454, 8, 'VIDAS', labelStyle).setDepth(21);
+        this.hearts = [];
+        for(let i=0; i<3; i++) {
+            this.hearts.push(this.add.image(468 + i*28, 28, 'heart').setDepth(21).setTint(0xff3366));
+        }
+
+        this.depthText = this.add.text(634, 20, '3800m', valStyle).setDepth(21).setColor('#4488aa');
+        this.add.text(634, 8, 'PROF.', labelStyle).setDepth(21);
+    }
+
+    updateHUD() {
+        this.scoreText.setText(this.score.toString().padStart(6, '0'));
+        this.waveText.setText('W-' + this.wave.toString().padStart(2, '0'));
+        const d = Math.max(100, 3800 - (this.wave-1) * 340);
+        this.depthText.setText(`${d}m`);
+    }
+
+    spawnBarriers() {
+        for(let i=0; i<4; i++) {
+            const b = this.barriers.create(130 + i*180, 430, 'coral');
+            b.health = 5;
+            b.setImmovable(true);
+        }
+    }
+
+    _showWaveAnnouncement() {
+        const txt = this.add.text(400, 300, `ONDA ${this.wave}`, {
+            fontFamily: 'Share Tech Mono', fontSize: '40px', color: '#00ffcc'
+        }).setOrigin(0.5).setDepth(30).setAlpha(0);
+        
+        this.tweens.add({
+            targets: txt, alpha: 1, yoyo: true, duration: 900, onComplete: () => txt.destroy()
+        });
+    }
+}
+
+class GameOver extends Phaser.Scene {
+    constructor() { super('GameOver'); }
+
+    create(data) {
+        const score = data.score || 0;
+        const wave = data.wave || 1;
+
+        // Background
+        this.add.graphics().fillStyle(0x000510).fillRect(0,0,800,600);
+        this.add.graphics().fillGradientStyle(0xff0000, 0xff0000, 0, 0, 0.04).fillCircle(400, 300, 400);
+
+        const panel = this.add.graphics();
+        panel.fillStyle(0x000d1a, 0.88);
+        panel.fillRoundedRect(160, 140, 480, 320, 6);
+        panel.lineStyle(2, 0xff0044, 0.9);
+        panel.strokeRoundedRect(160, 140, 480, 320, 6);
+
+        this.add.text(400, 168, '! ! ! ALERTA CRÍTICO ! ! !', { 
+            fontFamily: 'Share Tech Mono', fontSize: '11px', color: '#ff0044' 
+        }).setOrigin(0.5);
+
+        const title = this.add.text(400, 220, 'FALHA NA MISSÃO', { 
+            fontFamily: 'Share Tech Mono', fontSize: '38px', color: '#ff0044' 
+        }).setOrigin(0.5);
+
+        this.tweens.add({ targets: title, alpha: 0.7, duration: 700, yoyo: true, repeat: -1 });
+
+        const statsStyle = { fontFamily: 'Share Tech Mono', fontSize: '15px', color: '#884455' };
+        const valStyle = { fontFamily: 'Share Tech Mono', fontSize: '15px', color: '#ff6688' };
+
+        this.add.text(210, 275, 'PONTUAÇÃO FINAL:', statsStyle);
+        this.add.text(590, 275, score.toString().padStart(6, '0'), valStyle).setOrigin(1, 0);
+
+        this.add.text(210, 309, 'ONDAS SOBREVIVIDAS:', statsStyle);
+        this.add.text(590, 309, (wave-1).toString(), valStyle).setOrigin(1, 0);
+
+        this.add.text(210, 343, 'CLASSIFICAÇÃO:', statsStyle);
+        this.add.text(590, 343, this._getRank(score), valStyle).setOrigin(1, 0);
+
+        const retry = this.add.text(400, 400, '[ RECOMEÇAR ]', { 
+            fontFamily: 'Share Tech Mono', fontSize: '20px', color: '#ff0044' 
+        }).setOrigin(0.5).setInteractive();
+
+        this.tweens.add({ targets: retry, alpha: 0.4, duration: 500, yoyo: true, repeat: -1 });
+
+        retry.on('pointerdown', () => this.scene.start('GameScene'));
+        this.input.keyboard.on('keydown-SPACE', () => this.scene.start('GameScene'));
+    }
+
+    _getRank(s) {
+        if (s >= 3000) return 'CAPITÃO ABISSAL';
+        if (s >= 1500) return 'COMANDANTE';
+        if (s >= 700) return 'OPERADOR';
+        if (s >= 200) return 'RECRUTA';
+        return 'PEIXE MORTO';
+    }
+}
+
+const config = {
+    type: Phaser.AUTO,
+    width: 800,
+    height: 600,
+    parent: 'game-container',
+    backgroundColor: '#000510',
+    physics: { default: 'arcade', arcade: { gravity: { y: 0 } } },
+    scene: [BootScene, MainMenu, GameScene, GameOver]
+};
+
+const game = new Phaser.Game(config);
+</script>
+</body>
+</html>

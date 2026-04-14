@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FLAPPY MASS - Neo-Brutalism Arcade</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+    <style>
+        :root {
+            --bg: #141414; --panel: #0b0b0b; --ink: #f4f4f4;
+            --accent: #f7df1e; --accent2: #39d5ff; --danger: #ff4d4d;
+        }
+
+        html, body {
+            margin: 0; width: 100%; height: 100%; overflow: hidden;
+            background: radial-gradient(circle at top, #2b2b2b 0%, #171717 45%, #0c0c0c 100%);
+            font-family: "Courier New", monospace;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        #game-wrap {
+            position: relative;
+            box-shadow: 18px 18px 0 #000;   /* Sombra dura Neo-Brutalista */
+            border: 4px solid #fff;
+            background: #111;
+        }
+
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+
+<div id="game-wrap"></div>
+
+<script>
+/**
+ * FLAPPY MASS
+ * Design & Code: Game Dev Mentor
+ * Estética: Neo-Brutalismo / Cyber-Industrial
+ */
+
+const WIDTH              = 420;
+const HEIGHT             = 700;
+const PIPE_WIDTH         = 72;
+const CAP_H              = 20;
+const BASE_PIPE_SPEED    = 210;
+const PIPE_SPACING_PX    = 300;
+const HOLD_THRESHOLD     = 180;
+const SHRINK_MIN_COOLDOWN= 500;
+const SHRINK_DURATION    = 1800;
+const SHRINK_COOLDOWN    = 3000;
+const FLOOR_Y            = HEIGHT - 68;
+const MIN_PIPE_H         = 60;
+
+const GAME_STATE = { READY: 'ready', PLAYING: 'playing', DEAD: 'dead' };
+
+class FlappyMass extends Phaser.Scene {
+    constructor() {
+        super('FlappyMass');
+    }
+
+    preload() {}
+
+    create() {
+        // 1. Estados Iniciais
+        this.lastClickTime = 0;
+        this.shrinkLocked = false;
+        this.state = GAME_STATE.READY;
+        this.score = 0;
+        this.best = Number(localStorage.getItem('mass_shift_best') || 0);
+        this.holdTimer = null;
+        this.shrinkStartTime = 0;
+        this.shrinkActive = false;
+        this.shrinkCooldownActive = false;
+        this.pipeSpeed = BASE_PIPE_SPEED;
+        this.currentPhase = -1;
+        this.pipePairsPassed = 0;
+        this.lastPipeY = HEIGHT / 2;
+        this.segmentType = 'normal';
+        this.segmentTimer = 5;
+        this.playerTrail = [];
+
+        // 2. Setup Visual
+        this.generatePlayerTextures();
+        this.createBackground();
+        this.createGroups();
+        this.createPlayer();
+        this.createHUD();
+        this.createCollisions();
+        this.setupInput();
+
+        // 3. Timers
+        this.pipeSpawner = this.time.addEvent({
+            delay: this.calcSpawnDelay(BASE_PIPE_SPEED),
+            callback: this.spawnPipePair, callbackScope: this, loop: true, paused: true
+        });
+
+        this.scoreTimer = this.time.addEvent({
+            delay: 100, loop: true, paused: true,
+            callback: () => {
+                this.score += this.shrinkActive ? 0.6 : 1.35;
+                this.updateHUDText();
+            }
+        });
+
+        this.missileSpawner = this.time.addEvent({
+            delay: 3000, loop: true, paused: true,
+            callback: () => { if (this.score > 150) this.spawnMissileWithWarning(); }
+        });
+
+        this.renderReadyMessage();
+        this.applyPhase(0);
+        this.showStartMenu();
+    }
+
+    generatePlayerTextures() {
+        // Big Player
+        let g = this.make.graphics({ add: false });
+        g.fillStyle(0xf7df1e, 1);
+        g.lineStyle(4, 0xffffff, 1);
+        g.fillRoundedRect(0, 0, 34, 34, 6);
+        g.strokeRoundedRect(2, 2, 30, 30, 6);
+        g.generateTexture('player-big', 34, 34);
+
+        // Small Player
+        g.clear();
+        g.fillStyle(0x39d5ff, 1);
+        g.lineStyle(3, 0xffffff, 1);
+        g.fillRoundedRect(0, 0, 18, 18, 5);
+        g.strokeRoundedRect(1.5, 1.5, 15, 15, 5);
+        g.generateTexture('player-small', 18, 18);
+    }
+
+    createBackground() {
+        // Back
+        let g = this.make.graphics({ add: false });
+        g.fillStyle(0x2a2a2a);
+        g.fillRect(0, 0, WIDTH, HEIGHT);
+        for(let i=0; i<45; i++) {
+            g.fillStyle(0x262626);
+            let h = 90 + (Math.sin(i * 13) * 90 + 90);
+            g.fillRect((i * 83) % WIDTH, HEIGHT - h, 34, h);
+        }
+        // Grid
+        g.lineStyle(1, 0x333333, 1);
+        for(let y=0; y<HEIGHT; y+=70) {
+            g.lineBetween(0, y, WIDTH, y);
+        }
+        g.generateTexture('bg-back', WIDTH, HEIGHT);
+
+        // Mid
+        g.clear();
+        for(let i=0; i<10; i++) {
+            g.fillStyle(0x3a3a3a);
+            g.lineStyle(1, 0xffffff, 0.25);
+            let h = 130 + (Math.cos(i * 29) * 80 + 80);
+            let x = i * 70 + 20;
+            g.fillRect(x, HEIGHT - h, 52, h);
+            g.strokeRect(x, HEIGHT - h, 52, h);
+        }
+        g.generateTexture('bg-mid', WIDTH, HEIGHT);
+
+        // Front
+        g.clear();
+        g.fillStyle(0x1f1f1f);
+        g.fillRect(0, FLOOR_Y, WIDTH, HEIGHT - FLOOR_Y);
+        for(let x=0; x<WIDTH; x+=24) {
+            g.fillStyle(x % 48 === 0 ? 0xffffff : 0x2a2a2a, 0.18);
+            g.fillRect(x, FLOOR_Y, 24, 10);
+        }
+        g.generateTexture('bg-front', WIDTH, HEIGHT);
+
+        this.bgBack = this.add.tileSprite(WIDTH/2, HEIGHT/2, WIDTH, HEIGHT, 'bg-back');
+        this.bgMid = this.add.tileSprite(WIDTH/2, HEIGHT/2, WIDTH, HEIGHT, 'bg-mid');
+        this.bgFront = this.add.tileSprite(WIDTH/2, HEIGHT/2, WIDTH, HEIGHT, 'bg-front');
+
+        // Estrelas
+        for(let i=0; i<20; i++) {
+            let s = this.add.circle(Phaser.Math.Between(0, WIDTH), Phaser.Math.Between(0, FLOOR_Y), Phaser.Math.Between(1,2), 0xffffff, Phaser.Math.FloatBetween(0.15, 0.5));
+            s.setDepth(5);
+            this.tweens.add({ targets: s, alpha: 0.1, duration: Phaser.Math.Between(800, 2000), yoyo: true, repeat: -1 });
+        }
+
+        // FX
+        this.vignette = this.add.rectangle(WIDTH/2, HEIGHT/2, WIDTH, HEIGHT, 0x000000, 0).setDepth(30);
+        this.flash = this.add.rectangle(WIDTH/2, HEIGHT/2, WIDTH, HEIGHT, 0xffffff, 0).setDepth(31);
+        
+        // Scanlines
+        let sc = this.add.graphics().setDepth(29);
+        sc.lineStyle(1, 0xffffff, 0.04);
+        for(let i=0; i<HEIGHT; i+=4) sc.lineBetween(0, i, WIDTH, i);
+    }
+
+    createGroups() {
+        this.pipes = this.add.group();
+        this.missiles = this.physics.add.group();
+        this.phaseMarks = this.add.group();
+    }
+
+    createPlayer() {
+        this.player = this.physics.add.sprite(110, HEIGHT * 0.45, 'player-big')
+            .setDepth(20);
+        this.player.body.setAllowGravity(false);
+        this.player.body.setSize(28, 28).setOffset(3, 3);
+
+        this.player.baseGravity = 1250;
+        this.player.shrinkGravity = 900;
+        this.player.jumpForceBig = -355;
+        this.player.jumpForceSmall = -285;
+
+        // Decorators
+        this.playerGlow = this.add.circle(0, 0, 26, 0xf7df1e, 0.12).setDepth(19);
+        this.playerOutline = this.add.rectangle(0, 0, 40, 40).setStrokeStyle(2, 0xffffff, 0.28).setDepth(18);
+        this.playerDanger = this.add.rectangle(0, 0, 44, 44).setStrokeStyle(3, 0xff4d4d, 0).setDepth(21);
+    }
+
+    createHUD() {
+        this.hudTop = this.add.rectangle(WIDTH/2, 36, WIDTH-24, 52, 0x000000, 0.28)
+            .setStrokeStyle(2, 0xffffff, 0.10).setDepth(40);
+        
+        this.scoreText = this.add.text(24, 22, 'DEPTH: 0m', { fontSize: '24px', fontWeight: 'bold', fill: '#f7df1e', fontFamily: 'Arial' }).setDepth(42);
+        this.bestText = this.add.text(WIDTH-24, 24, `BEST: ${this.best}m`, { fontSize: '16px', fontWeight: 'bold', fill: '#bdbdbd', fontFamily: 'Arial' }).setOrigin(1, 0).setDepth(42);
+
+        this.shrinkText = this.add.text(WIDTH/2, HEIGHT-108, '', { fontSize: '16px', fontWeight: 'bold', fill: '#39d5ff', fontFamily: 'Arial' }).setOrigin(0.5).setDepth(42);
+        this.hintText = this.add.text(WIDTH/2, HEIGHT-94, 'SEGURE PARA ENCOLHER', { fontSize: '12px', fill: '#6f6f6f', fontFamily: 'Arial' }).setOrigin(0.5).setDepth(42);
+
+        // Barra de Energia
+        this.energyFrame = this.add.rectangle(WIDTH/2, HEIGHT-60, 132, 14, 0x111111, 0.65).setStrokeStyle(1, 0xffffff, 0.18).setDepth(50);
+        this.shrinkBarBg = this.add.rectangle(WIDTH/2, HEIGHT-60, 120, 8, 0x222222, 0.85).setDepth(51);
+        this.shrinkBarFill = this.add.rectangle(WIDTH/2 - 60, HEIGHT-60, 120, 8, 0x39d5ff, 1).setOrigin(0, 0.5).setDepth(52);
+    }
+
+    createCollisions() {
+        this.physics.add.overlap(this.player, this.missiles, () => this.triggerGameOver());
+    }
+
+    setupInput() {
+        this.input.on('pointerdown', (pointer) => {
+            if (this.state === GAME_STATE.DEAD) return this.restartScene();
+            if (this.state === GAME_STATE.READY) return this.startRun();
+
+            let now = Date.now();
+            let delta = now - this.lastClickTime;
+            this.lastClickTime = now;
+
+            if (delta < 300) {
+                if (this.holdTimer) this.holdTimer.remove();
+                this.activateShrink(true);
+            } else {
+                this.holdTimer = this.time.delayedCall(HOLD_THRESHOLD, () => {
+                    this.activateShrink(false);
+                });
+            }
+        });
+
+        this.input.on('pointerup', () => {
+            if (this.holdTimer) {
+                this.holdTimer.remove();
+                this.holdTimer = null;
+                this.jump();
+            } else if (this.shrinkActive && !this.shrinkLocked) {
+                this.deactivateShrink();
+            }
+        });
+
+        this.input.keyboard.on('keydown-SPACE', () => {
+            if (this.state === GAME_STATE.DEAD) this.restartScene();
+            else if (this.state === GAME_STATE.READY) this.startRun();
+            else this.jump();
+        });
+
+        this.input.keyboard.on('keydown-SHIFT', () => {
+            if (this.state === GAME_STATE.PLAYING) this.activateShrink(true);
+        });
+    }
+
+    startRun() {
+        this.state = GAME_STATE.PLAYING;
+        this.hideStartMenu();
+        this.player.body.setAllowGravity(true);
+        this.player.body.setGravityY(this.player.baseGravity);
+        this.pipeSpawner.paused = false;
+        this.scoreTimer.paused = false;
+        this.missileSpawner.paused = false;
+        this.spawnPipePair();
+        this.jump();
+    }
+
+    jump() {
+        let vy = this.shrinkActive ? this.player.jumpForceSmall : this.player.jumpForceBig;
+        this.player.body.setVelocityY(vy);
+
+        // FX
+        this.flash.alpha = 0.05;
+        this.tweens.add({ targets: this.flash, alpha: 0, duration: 120 });
+        this.tweens.add({ targets: this.player, scaleX: this.shrinkActive?0.7:1.1, scaleY: this.shrinkActive?0.8:0.9, duration: 85, yoyo: true });
+    }
+
+    activateShrink(locked) {
+        if (this.shrinkActive || this.shrinkCooldownActive) return;
+        this.shrinkActive = true;
+        this.shrinkLocked = locked;
+        this.shrinkStartTime = this.time.now;
+
+        this.player.setTexture('player-small');
+        this.player.body.setSize(18, 18).setOffset(2, 2);
+        this.player.body.setGravityY(this.player.shrinkGravity);
+        this.player.body.setVelocityY(this.player.body.velocity.y * 0.4);
+        
+        this.cameras.main.shake(80, 0.003);
+        this.shrinkText.setText('MASSA REDUZIDA').setAlpha(1).setFill('#39d5ff');
+        this.shrinkBarFill.setFillStyle(0x00ff88);
+    }
+
+    deactivateShrink(force = false) {
+        if (!this.shrinkActive) return;
+        if (this.shrinkLocked && !force) return;
+
+        let usedMs = this.time.now - this.shrinkStartTime;
+        let ratio = Math.min(1, usedMs / SHRINK_DURATION);
+        let cooldown = Math.round(SHRINK_MIN_COOLDOWN + ratio * (SHRINK_COOLDOWN - SHRINK_MIN_COOLDOWN));
+
+        this.shrinkActive = false;
+        this.shrinkLocked = false;
+        this.player.setTexture('player-big');
+        this.player.body.setSize(28, 28).setOffset(3, 3);
+        this.player.body.setGravityY(this.player.baseGravity);
+        
+        this.shrinkCooldownActive = true;
+        this.shrinkText.setText('RECARREGANDO').setFill('#ff4d4d');
+        this.shrinkBarFill.setFillStyle(0xff0055);
+
+        this.tweens.add({
+            targets: this.shrinkBarFill,
+            width: 120,
+            duration: cooldown,
+            onComplete: () => {
+                this.shrinkCooldownActive = false;
+                this.shrinkText.setAlpha(0);
+                this.tweens.add({ targets: this.playerOutline, alpha: 1, duration: 100, yoyo: true, repeat: 1 });
+            }
+        });
+    }
+
+    spawnPipePair() {
+        this.segmentTimer--;
+        if (this.segmentTimer <= 0) {
+            this.segmentType = Phaser.Utils.Array.GetRandom(['normal', 'wave', 'tight', 'shrinkTunnel']);
+            this.segmentTimer = Phaser.Math.Between(5, 8);
+            if (this.segmentType === 'shrinkTunnel') this.showShrinkWarning();
+        }
+
+        let t = Math.min(1, this.score / 1200);
+        let gap = 185 - (t * 55);
+        if (this.segmentType === 'tight') gap = 125;
+        if (this.segmentType === 'shrinkTunnel') gap = 105;
+        gap = Math.max(105, gap);
+
+        let variation = Phaser.Math.Between(-90, 90);
+        if (this.segmentType === 'wave') variation = Math.sin(this.time.now * 0.0025) * 75;
+
+        let centerY = Phaser.Math.Clamp(this.lastPipeY + variation, MIN_PIPE_H + gap/2, FLOOR_Y - MIN_PIPE_H - gap/2);
+        this.lastPipeY = centerY;
+
+        let topH = centerY - gap/2;
+        let bottomStartY = centerY + gap/2;
+        let bottomH = FLOOR_Y - bottomStartY;
+
+        let x = WIDTH + PIPE_WIDTH/2 + 20;
+        this.createPipe(x, topH / 2, PIPE_WIDTH, topH, false);
+        this.createPipe(x, bottomStartY + bottomH / 2, PIPE_WIDTH, bottomH, true);
+        
+        // Gate Marker
+        let zone = this.add.rectangle(x, centerY, 8, gap-10, 0xffffff, 0.05).setStrokeStyle(1, 0xffffff, 0.15).setDepth(12);
+        this.phaseMarks.add(zone);
+
+        // Ajustar delay
+        this.pipeSpeed = Math.round(165 + Math.pow(t, 1.6) * 140);
+        let newDelay = this.calcSpawnDelay(this.pipeSpeed);
+        if (Math.abs(this.pipeSpawner.delay - newDelay) > 40) {
+            this.pipeSpawner.delay = newDelay;
+        }
+    }
+
+    createPipe(x, y, w, h, isBottom) {
+        const pipe = this.add.rectangle(x, y, w, h, 0x1a1a1a).setStrokeStyle(2, 0xffffff, 0.35).setDepth(15);
+        pipe.isBottom = isBottom;
+        pipe.scored = false;
+        pipe.speedX = this.pipeSpeed;
+        this.pipes.add(pipe);
+
+        const capY = isBottom ? y - h/2 - CAP_H/2 : y + h/2 + CAP_H/2;
+        const cap = this.add.rectangle(x, capY, w+16, CAP_H, 0x2c2c2c).setStrokeStyle(3, 0xffffff, 0.9).setDepth(16);
+        cap.scored = true; // Caps não contam ponto extra
+        cap.speedX = this.pipeSpeed;
+        this.pipes.add(cap);
+    }
+
+    calcSpawnDelay(speed) { return Math.round((PIPE_SPACING_PX / speed) * 1000); }
+
+    update(time, delta) {
+        if (this.state === GAME_STATE.PLAYING) {
+            this.updateParallax();
+            this.updatePlayerAngle();
+            this.updatePlayerTrail();
+            this.updatePipeCleanup();
+            this.updatePipeCollision();
+            this.updateEnergyBar();
+            this.updateDangerIndicator();
+            this.checkPhase();
+        } else if (this.state === GAME_STATE.READY) {
+            this.updateParallax(1.4);
+        }
+    }
+
+    updateParallax(override) {
+        let s = override || this.pipeSpeed;
+        this.bgBack.tilePositionX  += s/60 * 0.18;
+        this.bgMid.tilePositionX   += s/60 * 0.45;
+        this.bgFront.tilePositionX += s/60 * 1.0;
+    }
+
+    updatePlayerAngle() {
+        let vy = this.player.body.velocity.y;
+        this.player.angle = Phaser.Math.Clamp(vy * 0.045, -28, 80);
+        
+        this.playerGlow.setPosition(this.player.x, this.player.y);
+        this.playerOutline.setPosition(this.player.x, this.player.y).setAngle(this.player.angle);
+        this.playerDanger.setPosition(this.player.x, this.player.y).setAngle(this.player.angle);
+
+        this.playerGlow.radius = this.shrinkActive ? 18 : 26;
+        let size = this.shrinkActive ? 28 : 40;
+        this.playerOutline.setDisplaySize(size, size);
+        this.playerDanger.setDisplaySize(size + 6, size + 6);
+    }
+
+    updatePlayerTrail() {
+        if (this.time.now % 2 !== 0) {
+            let t = this.add.circle(this.player.x, this.player.y, this.shrinkActive?4:7, this.shrinkActive?0x39d5ff:0xf7df1e, 0.35).setDepth(17);
+            this.tweens.add({ targets: t, x: '-=20', alpha: 0, scale: 0.2, duration: 300, onComplete: () => t.destroy() });
+        }
+    }
+
+    updatePipeCleanup() {
+        this.pipes.getChildren().forEach(p => {
+            p.x -= p.speedX / 60;
+            if (!p.scored && p.x + p.width/2 < this.player.x) {
+                p.scored = true;
+                this.score += this.shrinkActive ? 5 : 12;
+                this.updateHUDText();
+            }
+            if (p.x < -150) p.destroy();
+        });
+
+        this.phaseMarks.getChildren().forEach(m => {
+            m.x -= this.pipeSpeed / 60;
+            if (m.x < -100) m.destroy();
+        });
+
+        this.missiles.getChildren().forEach(m => {
+            if (m.x < -100) m.destroy();
+        });
+    }
+
+    updatePipeCollision() {
+        const hw = this.shrinkActive ? 7 : 13;
+        const hh = this.shrinkActive ? 7 : 13;
+        const px = this.player.x;
+        const py = this.player.y;
+
+        this.pipes.getChildren().forEach(pipe => {
+            if (px + hw > pipe.x - pipe.width/2 && px - hw < pipe.x + pipe.width/2 &&
+                py + hh > pipe.y - pipe.height/2 && py - hh < pipe.y + pipe.height/2) {
+                this.triggerGameOver();
+            }
+        });
+
+        if (py + hh > FLOOR_Y || py - hh < 0) this.triggerGameOver();
+    }
+
+    updateEnergyBar() {
+        if (this.shrinkActive) {
+            let usedMs = this.time.now - this.shrinkStartTime;
+            let remaining = 1 - (usedMs / SHRINK_DURATION);
+            this.shrinkBarFill.width = Math.max(0, remaining * 120);
+            if (usedMs >= SHRINK_DURATION) this.deactivateShrink(true);
+        }
+    }
+
+    updateDangerIndicator() {
+        let nearest = 999;
+        this.pipes.getChildren().forEach(p => {
+            if (p.x > this.player.x) {
+                let dx = (p.x - p.width/2) - (this.player.x + 17);
+                nearest = Math.min(nearest, dx);
+            }
+        });
+        let alpha = nearest < 80 ? (80 - nearest)/80 : 0;
+        this.playerDanger.setStrokeStyle(3, 0xff4d4d, alpha);
+        this.vignette.setAlpha(alpha * 0.25);
+    }
+
+    updateHUDText() {
+        let s = Math.floor(this.score);
+        this.scoreText.setText(`DEPTH: ${s}m`);
+    }
+
+    checkPhase() {
+        let p = 0;
+        if (this.score > 800) p = 3;
+        else if (this.score > 400) p = 2;
+        else if (this.score > 150) p = 1;
+
+        if (this.currentPhase !== p) this.applyPhase(p);
+    }
+
+    applyPhase(id) {
+        this.currentPhase = id;
+        const themes = [
+            { bg: 0x161616, accent: 0xf7df1e, name: 'YELLOW' },
+            { bg: 0x001a33, accent: 0x39d5ff, name: 'CYAN' },
+            { bg: 0x2b0000, accent: 0xff4d4d, name: 'CRIMSON' },
+            { bg: 0x051a05, accent: 0x39ff14, name: 'NEON' }
+        ];
+        let t = themes[id];
+        this.cameras.main.setBackgroundColor(t.bg);
+        this.bgBack.setTint(t.bg);
+        this.bgMid.setTint(t.bg);
+        this.bgFront.setTint(t.bg);
+        this.scoreText.setFill('#' + t.accent.toString(16));
+        this.playerGlow.fillColor = t.accent;
+
+        this.cameras.main.flash(400, 255, 255, 255, 0.2);
+    }
+
+    showShrinkWarning() {
+        this.shrinkText.setText('CUIDADO: TÚNEL ESTREITO').setAlpha(1).setFill('#ffffff');
+        this.tweens.add({ targets: this.shrinkText, alpha: 0.3, duration: 250, yoyo: true, repeat: 4 });
+    }
+
+    spawnMissileWithWarning() {
+        let targetY = Phaser.Math.Between(50, FLOOR_Y - 50);
+        let warning = this.add.triangle(WIDTH-30, targetY, 0,20, 20,10, 0,0, 0xff4d4d).setDepth(45);
+        this.tweens.add({ targets: warning, alpha: 0, duration: 150, yoyo: true, repeat: 5, onComplete: () => {
+            warning.destroy();
+            this.launchMissile(targetY);
+        }});
+    }
+
+    launchMissile(y) {
+        let m = this.missiles.create(WIDTH+50, y, null);
+        m.setDisplaySize(45, 20).setDepth(25).body.setAllowGravity(false);
+        // Visual custom do míssil
+        let rect = this.add.rectangle(0, 0, 45, 20, 0xff4d4d).setStrokeStyle(2, 0xffffff);
+        m.setData('visual', rect);
+        m.body.setVelocityX(-(this.pipeSpeed * 2.8));
+    }
+
+    triggerGameOver() {
+        if (this.state === GAME_STATE.DEAD) return;
+        this.state = GAME_STATE.DEAD;
+        
+        this.pipeSpawner.paused = true;
+        this.scoreTimer.paused = true;
+        this.missileSpawner.paused = true;
+
+        let final = Math.floor(this.score);
+        if (final > this.best) {
+            this.best = final;
+            localStorage.setItem('mass_shift_best', final);
+        }
+
+        this.physics.pause();
+        this.cameras.main.shake(300, 0.008);
+        
+        // Explosão
+        for(let i=0; i<12; i++) {
+            let frag = this.add.rectangle(this.player.x, this.player.y, 6, 6, 0xf7df1e).setDepth(50);
+            let angle = (i/12) * Math.PI * 2;
+            let dist = Phaser.Math.Between(50, 150);
+            this.tweens.add({
+                targets: frag,
+                x: this.player.x + Math.cos(angle) * dist,
+                y: this.player.y + Math.sin(angle) * dist,
+                alpha: 0, rotation: 2, duration: 600
+            });
+        }
+        this.player.setVisible(false);
+        this.playerGlow.setVisible(false);
+
+        this.time.delayedCall(500, () => this.showDeathMenu(final));
+    }
+
+    showStartMenu() {
+        this.menuGroup = this.add.group();
+        let shadow = this.add.rectangle(WIDTH/2 + 6, HEIGHT/2 + 8, 310, 300, 0xf7df1e).setDepth(60);
+        let panel = this.add.rectangle(WIDTH/2, HEIGHT/2, 310, 300, 0x101010).setStrokeStyle(4, 0xffffff).setDepth(61);
+        let title = this.add.text(WIDTH/2, HEIGHT/2 - 80, 'FLAPPY\nMASS', { fontSize: '42px', fontWeight: '900', align: 'center', fill: '#fff', fontFamily: 'Arial' }).setOrigin(0.5).setDepth(62).setStroke('#000', 8);
+        
+        let startBtn = this.add.rectangle(WIDTH/2, HEIGHT/2 + 80, 220, 45, 0x000, 1).setStrokeStyle(2, 0xffffff).setDepth(62);
+        let startTxt = this.add.text(WIDTH/2, HEIGHT/2 + 80, 'INICIAR BOOT', { fontSize: '18px', fill: '#fff', fontFamily: 'Arial' }).setOrigin(0.5).setDepth(63);
+
+        this.menuGroup.addMultiple([shadow, panel, title, startBtn, startTxt]);
+        
+        this.tweens.add({ targets: shadow, x: '+=4', duration: 200, yoyo: true, repeat: -1 });
+    }
+
+    hideStartMenu() {
+        if(this.menuGroup) this.menuGroup.clear(true, true);
+    }
+
+    showDeathMenu(score) {
+        let shadow = this.add.rectangle(WIDTH/2 + 6, HEIGHT/2 + 6, 300, 250, 0x39d5ff).setDepth(60);
+        let panel = this.add.rectangle(WIDTH/2, HEIGHT/2, 300, 250, 0x111111).setStrokeStyle(4, 0xffffff).setDepth(61);
+        let title = this.add.text(WIDTH/2, HEIGHT/2 - 60, 'FALHA CRÍTICA', { fontSize: '28px', fill: '#ff4d4d', fontWeight: 'bold', fontFamily: 'Arial' }).setOrigin(0.5).setDepth(62);
+        let info = this.add.text(WIDTH/2, HEIGHT/2, `SCORE: ${score}m\nBEST: ${this.best}m`, { fontSize: '22px', fill: '#fff', align: 'center', fontFamily: 'Arial' }).setOrigin(0.5).setDepth(62);
+        let restart = this.add.text(WIDTH/2, HEIGHT/2 + 80, 'CLIQUE PARA REINICIAR', { fontSize: '14px', fill: '#bdbdbd', fontFamily: 'Arial' }).setOrigin(0.5).setDepth(62);
+
+        this.tweens.add({ targets: shadow, x: '-=4', duration: 250, yoyo: true, repeat: -1 });
+    }
+
+    renderReadyMessage() {
+        this.readyText = this.add.text(WIDTH/2, HEIGHT*0.35, 'PRONTO?', { fontSize: '32px', fill: '#fff', fontFamily: 'Arial' }).setOrigin(0.5).setDepth(40).setVisible(false);
+    }
+
+    restartScene() {
+        this.scene.restart();
+    }
+}
+
+const config = {
+    type: Phaser.AUTO,
+    parent: 'game-wrap',
+    width: WIDTH,
+    height: HEIGHT,
+    backgroundColor: '#161616',
+    physics: {
+        default: 'arcade',
+        arcade: { gravity: { y: 0 }, debug: false }
+    },
+    scene: FlappyMass
+};
+
+new Phaser.Game(config);
+</script>
+</body>
+</html>

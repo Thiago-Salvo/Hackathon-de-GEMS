@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jogo: xxx</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        /* =========================================
+           1. ESTILO GERAL E DARK MODE
+           ========================================= */
+        body {
+            margin: 0;
+            padding: 30px;
+            background-color: #121214; /* Mantendo a cor principal */
+            color: #e1e1e6;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            box-sizing: border-box;
+        }
+
+        /* =========================================
+           2. BOTÃO DE VOLTAR E TÍTULO
+           ========================================= */
+        .cabecalho {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .btn-voltar {
+            background-color: transparent;
+            color: #8257e5;
+            border: 2px solid #8257e5;
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: 0.3s;
+            margin-right: 20px;
+        }
+
+        .btn-voltar:hover {
+            background-color: #8257e5;
+            color: white;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        /* =========================================
+           3. BLOCO DO JOGO (IFRAME)
+           ========================================= */
+        .bloco-jogo {
+            width: 100%;
+            /* Mudamos de 60vh para 100vh. 
+               'vh' significa Viewport Height (Altura da Tela). 
+               100vh = 100% da altura da tela visível.
+            */
+            height: 100vh; 
+            background-color: #000;
+            border: 2px solid #202024;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .bloco-jogo iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        /* =========================================
+           4. BLOCO DO PROMPT (MARKDOWN)
+           ========================================= */
+        h2 {
+            font-size: 20px;
+            color: #8257e5;
+            margin-bottom: 10px;
+        }
+
+        .bloco-prompt {
+            background-color: #202024; /* Um cinza um pouco mais claro que o fundo */
+            padding: 20px;
+            border-radius: 8px;
+            line-height: 1.6;
+            min-height: 100px;
+            border: 1px solid #323238;
+        }
+
+        /* Estilizando elementos de código dentro do Markdown */
+        .bloco-prompt code {
+            background-color: #121214;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+            color: #996dff;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="cabecalho">
+        <button class="btn-voltar" onclick="history.back()">&#8592; Voltar</button>
+        <h1>Jogo: Space Invaders</h1>
+    </div>
+
+    <div class="bloco-jogo">
+        <iframe src="./Jogo2.html" title="Área do Jogo"></iframe>
+    </div>
+
+    <h2>Prompt</h2>
+    <div id="area-markdown" class="bloco-prompt">
+        Carregando o arquivo Markdown...
+    </div>
+
+    <script>
+        // Substitua 'meu_prompt.md' pelo nome do seu arquivo Markdown
+        const arquivoMarkdown = 'Prompt2.md';
+
+        // O 'fetch' vai buscar o arquivo na sua pasta
+        fetch(arquivoMarkdown)
+            .then(resposta => {
+                if (!resposta.ok) {
+                    throw new Error("Não foi possível carregar o arquivo.");
+                }
+                return resposta.text(); // Pega o texto puro do arquivo
+            })
+            .then(texto => {
+                // A biblioteca 'marked' converte o texto puro para HTML
+                document.getElementById('area-markdown').innerHTML = marked.parse(texto);
+            })
+            .catch(erro => {
+                // Se der erro (ex: nome do arquivo errado), avisa aqui
+                document.getElementById('area-markdown').innerHTML = `<p style="color: red;">Erro: Arquivo Markdown não encontrado.</p>`;
+                console.error(erro);
+            });
+    </script>
+</body>
+</html>

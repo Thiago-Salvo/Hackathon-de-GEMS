@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flappy Gato - O gem mais HYPADO</title>
+    <style>
+        /* ==========================================================================
+           Estilos CSS - Setup Base e Interface de Usuário
+           ========================================================================== */
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            background-color: #222;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+            color: #fff;
+        }
+
+        #game-container {
+            position: relative;
+            width: 400px;
+            height: 600px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            border: 4px solid #333;
+            border-radius: 10px;
+            overflow: hidden;
+            background-color: #87CEEB; /* Cor inicial do céu */
+            transition: filter 0.5s ease;
+        }
+
+        /* Classe ativada ao chegar em 67 pontos */
+        .inverted {
+            filter: invert(100%) hue-rotate(180deg);
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Telas de UI sobrepostas ao Canvas */
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            pointer-events: none; /* Deixa o clique passar para o canvas */
+            z-index: 10;
+        }
+
+        /* Tela Inicial */
+        #start-screen h1 {
+            font-size: 36px;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 0 #000;
+            color: #FFA500;
+        }
+        
+        #start-screen p {
+            font-size: 16px;
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 5px;
+            animation: blink 1.5s infinite;
+        }
+
+        /* Tela de Game Over */
+        #game-over-screen {
+            display: none;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+        }
+
+        #game-over-screen h1 {
+            color: #ff3333;
+            font-size: 40px;
+            margin-bottom: 15px;
+            text-shadow: 3px 3px 0 #000;
+        }
+
+        #game-over-message {
+            font-size: 18px;
+            line-height: 1.4;
+            margin-bottom: 20px;
+            padding: 0 10px;
+            color: #ddd;
+        }
+
+        #restart-btn {
+            display: none; /* Escondido por 3 segundos inicialmente */
+            padding: 12px 24px;
+            font-size: 18px;
+            font-weight: bold;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            pointer-events: auto; /* Permite clique */
+            box-shadow: 0 4px #2e7d32;
+            transition: background 0.2s, transform 0.1s;
+        }
+
+        #restart-btn:active {
+            box-shadow: 0 0 #2e7d32;
+            transform: translateY(4px);
+        }
+
+        /* Placar no canto superior direito */
+        #score-display {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 32px;
+            font-weight: bold;
+            text-shadow: 2px 2px 0 #000;
+            z-index: 5;
+        }
+
+        /* Explosão de texto a cada 10 pontos */
+        #explosion-text {
+            position: absolute;
+            top: 30%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            font-size: 48px;
+            font-weight: 900;
+            text-shadow: 3px 3px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+            opacity: 0;
+            z-index: 20;
+            white-space: nowrap;
+        }
+
+        /* Animação CSS para o texto explosivo */
+        @keyframes explode {
+            0% { transform: translate(-50%, -50%) scale(0.1) rotate(-10deg); opacity: 1; }
+            50% { transform: translate(-50%, -50%) scale(1.5) rotate(5deg); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(2) rotate(10deg); opacity: 0; }
+        }
+
+        .exploding {
+            animation: explode 1s ease-out forwards;
+        }
+
+        /* Piscar do press start */
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="400" height="600"></canvas>
+
+        <div id="score-display">0</div>
+
+        <div id="explosion-text"></div>
+
+        <div id="start-screen" class="ui-layer">
+            <h1>Flappy Gato</h1>
+            <p>Clique ou Pressione ESPAÇO<br>para Pular e Iniciar</p>
+        </div>
+
+        <div id="game-over-screen" class="ui-layer">
+            <h1>GAME OVER</h1>
+            <div id="game-over-message">Seu gato foi de arrasta, tente ir mais longe na próxima!</div>
+            <button id="restart-btn">JOGAR NOVAMENTE</button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * ==========================================================================
+         * Jogo: Flappy Gato (Modificação de Flappy Bird)
+         * Autor: O gem mais HYPADO
+         * Descrição: Código robusto de min 500 linhas.
+         * Desvios de árvores, background dinâmico, cores invertidas.
+         * ==========================================================================
+         */
+
+        // ==========================================
+        // Configurações Globais e Elementos do DOM
+        // ==========================================
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const GAME_WIDTH = canvas.width;
+        const GAME_HEIGHT = canvas.height;
+
+        const scoreDisplay = document.getElementById('score-display');
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const explosionText = document.getElementById('explosion-text');
+        const restartBtn = document.getElementById('restart-btn');
+        const gameContainer = document.getElementById('game-container');
+
+        // Estados do Jogo
+        const STATE = {
+            START: 0,
+            PLAYING: 1,
+            GAMEOVER: 2
+        };
+
+        // Variáveis globais do jogo
+        let currentState = STATE.START;
+        let frames = 0;
+        let score = 0;
+        let animationId;
+        let canRestart = false; // Controle de bloqueio de 3 segundos
+        let invertedMode = false;
+        let milestonesHit = new Set(); // Guarda multiplos de 10 já atingidos
+
+        // Cores intensas para as explosões
+        const EXPLOSION_COLORS = [
+            '#FFEB3B', // 10 - Amarelo (Suave)
+            '#FF9800', // 20 - Laranja
+            '#FF5722', // 30 - Laranja avermelhado
+            '#F44336', // 40 - Vermelho
+            '#E91E63', // 50 - Rosa choque
+            '#9C27B0', // 60 - Roxo
+            '#00E5FF'  // 70+ - Ciano brilhante
+        ];
+
+        // ==========================================
+        // Utilitários de Desenho Vetorial (Canvas API)
+        // ==========================================
+
+        /**
+         * Desenha o Gato de forma procedural
+         */
+        function drawCat(ctx, x, y, width, height, rotation) {
+            ctx.save();
+            ctx.translate(x + width / 2, y + height / 2);
+            ctx.rotate(rotation);
+            ctx.translate(-(width / 2), -(height / 2));
+
+            const w = width;
+            const h = height;
+
+            // Corpo/Cabeça principal do Gatinho (Redondo)
+            ctx.fillStyle = '#ff8800'; // Gato Laranja
+            ctx.beginPath();
+            ctx.arc(w/2, h/2 + 5, w/2 - 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#333';
+            ctx.stroke();
+
+            // Orelha Esquerda
+            ctx.beginPath();
+            ctx.moveTo(5, 15);
+            ctx.lineTo(0, -5);
+            ctx.lineTo(15, 5);
+            ctx.fillStyle = '#ff8800';
+            ctx.fill();
+            ctx.stroke();
+
+            // Orelha Direita
+            ctx.beginPath();
+            ctx.moveTo(w - 5, 15);
+            ctx.lineTo(w, -5);
+            ctx.lineTo(w - 15, 5);
+            ctx.fillStyle = '#ff8800';
+            ctx.fill();
+            ctx.stroke();
+
+            // Barriguinha branca
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.ellipse(w/2, h/2 + 10, w/3, h/4, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Olhos
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(w/2 + 6, h/2 - 2, 4, 0, Math.PI*2); // Olho direito
+            ctx.arc(w/2 - 6, h/2 - 2, 4, 0, Math.PI*2); // Olho esquerdo
+            ctx.fill();
+            
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.arc(w/2 + 7, h/2 - 2, 2, 0, Math.PI*2); // Pupila direita
+            ctx.arc(w/2 - 5, h/2 - 2, 2, 0, Math.PI*2); // Pupila esquerda
+            ctx.fill();
+
+            // Focinho
+            ctx.fillStyle = '#ff9999';
+            ctx.beginPath();
+            ctx.arc(w/2, h/2 + 4, 2, 0, Math.PI*2);
+            ctx.fill();
+
+            // Bigodes esquerdo
+            ctx.beginPath();
+            ctx.moveTo(w/2 - 5, h/2 + 2); ctx.lineTo(w/2 - 15, h/2);
+            ctx.moveTo(w/2 - 5, h/2 + 4); ctx.lineTo(w/2 - 15, h/2 + 4);
+            ctx.moveTo(w/2 - 5, h/2 + 6); ctx.lineTo(w/2 - 15, h/2 + 8);
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            // Bigodes direito
+            ctx.beginPath();
+            ctx.moveTo(w/2 + 5, h/2 + 2); ctx.lineTo(w/2 + 15, h/2);
+            ctx.moveTo(w/2 + 5, h/2 + 4); ctx.lineTo(w/2 + 15, h/2 + 4);
+            ctx.moveTo(w/2 + 5, h/2 + 6); ctx.lineTo(w/2 + 15, h/2 + 8);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        /**
+         * Desenha uma Árvore (Obstáculo do jogo)
+         */
+        function drawTree(ctx, x, y, width, height, isTop) {
+            ctx.save();
+            
+            // Tronco (madeira)
+            const trunkWidth = width * 0.4;
+            const trunkX = x + (width - trunkWidth) / 2;
+            
+            // Cria um gradiente para o tronco dar volume
+            let gradTrunk = ctx.createLinearGradient(trunkX, 0, trunkX + trunkWidth, 0);
+            gradTrunk.addColorStop(0, '#5C4033'); // Marrom escuro
+            gradTrunk.addColorStop(0.5, '#8B5A2B'); // Marrom claro
+            gradTrunk.addColorStop(1, '#3E2723'); // Marrom muito escuro
+
+            ctx.fillStyle = gradTrunk;
+            ctx.fillRect(trunkX, y, trunkWidth, height);
+            
+            // Borda do tronco
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#2b1b11';
+            ctx.strokeRect(trunkX, y, trunkWidth, height);
+
+            // Folhagens da árvore (copa)
+            ctx.fillStyle = '#228B22'; // Verde floresta
+            ctx.strokeStyle = '#006400';
+            ctx.lineWidth = 3;
+
+            const leafSize = width * 0.6;
+            
+            if (isTop) {
+                // Se a árvore cresce de cima para baixo (ponta virada pra baixo)
+                // Vamos desenhar várias "bolinhas" no final do tronco para imitar copa invertida
+                const crownY = y + height - 20;
+                
+                ctx.beginPath();
+                ctx.arc(x + width/2, crownY, leafSize, 0, Math.PI * 2);
+                ctx.arc(x + width/4, crownY - 20, leafSize * 0.8, 0, Math.PI * 2);
+                ctx.arc(x + 3*width/4, crownY - 20, leafSize * 0.8, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+            } else {
+                // Árvore padrão de baixo pra cima
+                const crownY = y + 20;
+                
+                ctx.beginPath();
+                ctx.arc(x + width/2, crownY, leafSize, 0, Math.PI * 2);
+                ctx.arc(x + width/4, crownY + 20, leafSize * 0.8, 0, Math.PI * 2);
+                ctx.arc(x + 3*width/4, crownY + 20, leafSize * 0.8, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
+        // ==========================================
+        // Classes de Lógica e Objetos
+        // ==========================================
+
+        /**
+         * Classe Background Manager
+         * Cuida do parallax e adições dinâmicas de cenário conforme pontuação avança
+         */
+        class Background {
+            constructor() {
+                this.bgSpeed = 1;
+                this.groundSpeed = 2;
+                
+                this.groundX = 0;
+                this.elements = []; // Nuvens, montanhas
+                
+                // População inicial (Nuvens básicas)
+                this.addCloud(50, 100);
+                this.addCloud(250, 50);
+                this.addCloud(400, 150);
+                
+                this.level = 0; // Vai até 5 (50 pontos)
+            }
+
+            addCloud(x, y) {
+                this.elements.push({
+                    type: 'cloud',
+                    x: x,
+                    y: y,
+                    width: 60,
+                    speed: 0.5,
+                    scale: 0.5 + Math.random() * 0.5
+                });
+            }
+
+            addMountain(x) {
+                this.elements.push({
+                    type: 'mountain',
+                    x: x,
+                    y: GAME_HEIGHT - 100, // Acima do chão
+                    width: 150,
+                    speed: 0.2,
+                    scale: 1 + Math.random(),
+                    color: `hsl(${120 + Math.random() * 40}, 30%, 40%)` // Tons de verde/cinza
+                });
+            }
+
+            addBush(x) {
+                this.elements.push({
+                    type: 'bush',
+                    x: x,
+                    y: GAME_HEIGHT - 110,
+                    width: 40,
+                    speed: this.groundSpeed,
+                    scale: 1
+                });
+            }
+
+            // Chamada a cada 10 pontos pra adicionar mais tralha no fundo
+            upgradeBackground() {
+                if (this.level >= 5) return; // Limite nos 50 pontos
+                this.level++;
+                
+                // Adiciona novas coisas com base no nível
+                if (this.level === 1) {
+                    this.addMountain(GAME_WIDTH + 50);
+                    this.addMountain(GAME_WIDTH + 200);
+                } else if (this.level === 2) {
+                    this.addCloud(GAME_WIDTH, 80);
+                    this.addCloud(GAME_WIDTH + 150, 120);
+                } else if (this.level === 3) {
+                    this.addBush(GAME_WIDTH);
+                    this.addBush(GAME_WIDTH + 80);
+                } else if (this.level >= 4) {
+                    // Caos visual
+                    this.addMountain(GAME_WIDTH + 100);
+                    this.addCloud(GAME_WIDTH + 50, 60);
+                    this.addBush(GAME_WIDTH + 120);
+                }
+            }
+
+            update() {
+                if (currentState !== STATE.PLAYING) return;
+
+                // Move os elementos
+                for (let i = 0; i < this.elements.length; i++) {
+                    let el = this.elements[i];
+                    el.x -= el.speed;
+                    
+                    // Recicla elemento se saiu da tela
+                    if (el.x + el.width * 3 < 0) {
+                        el.x = GAME_WIDTH + Math.random() * 100;
+                    }
+                }
+
+                // Move chão falso
+                this.groundX = (this.groundX - this.groundSpeed) % (GAME_WIDTH / 2);
+            }
+
+            draw(ctx) {
+                // Limpa cenário caso queiramos background fixo extra, mas o CSS trata o azul.
+                
+                // Desenha montanhas primeiro (lá no fundo)
+                this.elements.filter(e => e.type === 'mountain').forEach(m => {
+                    ctx.fillStyle = m.color;
+                    ctx.beginPath();
+                    ctx.moveTo(m.x, m.y);
+                    ctx.lineTo(m.x + 100 * m.scale, m.y - 150 * m.scale);
+                    ctx.lineTo(m.x + 200 * m.scale, m.y);
+                    ctx.fill();
+                });
+
+                // Desenha nuvens
+                ctx.fillStyle = '#ffffff';
+                this.elements.filter(e => e.type === 'cloud').forEach(c => {
+                    ctx.beginPath();
+                    ctx.arc(c.x, c.y, 20 * c.scale, 0, Math.PI*2);
+                    ctx.arc(c.x + 25 * c.scale, c.y - 10 * c.scale, 25 * c.scale, 0, Math.PI*2);
+                    ctx.arc(c.x + 50 * c.scale, c.y, 20 * c.scale, 0, Math.PI*2);
+                    ctx.fill();
+                });
+
+                // Desenha arbustos (junto do chão)
+                ctx.fillStyle = '#006400';
+                this.elements.filter(e => e.type === 'bush').forEach(b => {
+                    ctx.beginPath();
+                    ctx.arc(b.x, b.y, 15, 0, Math.PI*2);
+                    ctx.arc(b.x + 15, b.y - 10, 20, 0, Math.PI*2);
+                    ctx.arc(b.x + 30, b.y, 15, 0, Math.PI*2);
+                    ctx.fill();
+                });
+
+                // Desenha o Chão (Grama verde)
+                ctx.fillStyle = '#4CAF50';
+                ctx.fillRect(0, GAME_HEIGHT - 100, GAME_WIDTH, 100);
+                
+                // Padrão de textura do chão pra dar sensação de velocidade
+                ctx.strokeStyle = '#388E3C';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                for (let i = 0; i <= GAME_WIDTH * 2; i += 20) {
+                    ctx.moveTo(i + this.groundX, GAME_HEIGHT - 100);
+                    ctx.lineTo(i - 15 + this.groundX, GAME_HEIGHT - 80);
+                }
+                ctx.stroke();
+                
+                // Borda do chão
+                ctx.fillStyle = '#795548';
+                ctx.fillRect(0, GAME_HEIGHT - 80, GAME_WIDTH, 80);
+            }
+        }
+
+        /**
+         * Classe Gato (Jogador)
+         */
+        class Cat {
+            constructor() {
+                this.width = 34;
+                this.height = 34;
+                this.reset();
+            }
+
+            reset() {
+                this.x = 50;
+                this.y = GAME_HEIGHT / 2;
+                this.velocity = 0;
+                this.gravity = 0.25;
+                this.jumpStrength = -5.5;
+                this.rotation = 0;
+                this.radius = 15; // Raio de colisão interno aproximado
+            }
+
+            jump() {
+                this.velocity = this.jumpStrength;
+            }
+
+            update() {
+                if (currentState === STATE.START) {
+                    // Faz o gato flutuar na tela inicial
+                    this.y += Math.cos(frames / 10) * 0.5;
+                    return;
+                }
+
+                // Aplica física
+                this.velocity += this.gravity;
+                this.y += this.velocity;
+
+                // Lógica de rotação para ficar visualmente responsivo ao movimento
+                if (this.velocity >= this.jumpStrength) {
+                    // Caindo
+                    this.rotation = Math.min(Math.PI / 4, this.rotation + 0.1);
+                } else {
+                    // Pulando
+                    this.rotation = -Math.PI / 6;
+                }
+
+                // Limita para não sair do teto bruscamente
+                if (this.y < 0) {
+                    this.y = 0;
+                    this.velocity = 0;
+                }
+
+                // Checa colisão com o chão
+                if (this.y + this.height / 2 >= GAME_HEIGHT - 100) {
+                    this.y = GAME_HEIGHT - 100 - this.height / 2;
+                    triggerGameOver();
+                }
+            }
+
+            draw(ctx) {
+                drawCat(ctx, this.x, this.y, this.width, this.height, this.rotation);
+            }
+            
+            // Retorna a Bounding Box pra checar colisão
+            getBounds() {
+                return {
+                    left: this.x + 5,
+                    right: this.x + this.width - 5,
+                    top: this.y + 5,
+                    bottom: this.y + this.height - 5
+                };
+            }
+        }
+
+        /**
+         * Classe TreeManager (Gestão das árvores obstáculos)
+         */
+        class TreeManager {
+            constructor() {
+                this.trees = [];
+                this.width = 60;
+                this.gap = 140; // Espaço para o gato passar
+                this.dx = 2;    // Velocidade que as árvores vêm
+                this.spawnFrames = 100; // A cada X frames nasce uma nova árvore
+            }
+
+            reset() {
+                this.trees = [];
+            }
+
+            update() {
+                if (currentState !== STATE.PLAYING) return;
+
+                // Spawn de novas árvores
+                if (frames % this.spawnFrames === 0) {
+                    // Calcula y aleatório garantindo que gap fica na tela visível
+                    let minTreeY = 50;
+                    let maxTreeY = GAME_HEIGHT - 100 - this.gap - 50;
+                    let topTreeHeight = Math.floor(Math.random() * (maxTreeY - minTreeY + 1) + minTreeY);
+
+                    this.trees.push({
+                        x: GAME_WIDTH,
+                        topHeight: topTreeHeight,
+                        bottomY: topTreeHeight + this.gap,
+                        bottomHeight: GAME_HEIGHT - 100 - (topTreeHeight + this.gap),
+                        passed: false
+                    });
+                }
+
+                for (let i = 0; i < this.trees.length; i++) {
+                    let p = this.trees[i];
+                    p.x -= this.dx;
+
+                    // Colisão
+                    let catBounds = cat.getBounds();
+                    
+                    // Box da Árvore Top
+                    let topTreeBox = {
+                        left: p.x, right: p.x + this.width, top: 0, bottom: p.topHeight
+                    };
+                    
+                    // Box da Árvore Baixo
+                    let bottomTreeBox = {
+                        left: p.x, right: p.x + this.width, top: p.bottomY, bottom: GAME_HEIGHT - 100
+                    };
+
+                    // Checa se o retângulo do gato encosta em algum dos retângulos das árvores
+                    if (this.checkCollision(catBounds, topTreeBox) || this.checkCollision(catBounds, bottomTreeBox)) {
+                        triggerGameOver();
+                    }
+
+                    // Score
+                    if (p.x + this.width < cat.x && !p.passed) {
+                        score++;
+                        p.passed = true;
+                        scoreDisplay.innerText = score;
+                        checkMilestones(score);
+                    }
+
+                    // Remove árvores que saíram da tela
+                    if (p.x + this.width < 0) {
+                        this.trees.shift();
+                        i--;
+                    }
+                }
+            }
+
+            draw(ctx) {
+                for (let i = 0; i < this.trees.length; i++) {
+                    let p = this.trees[i];
+                    // Desenha Árvore de Cima
+                    drawTree(ctx, p.x, 0, this.width, p.topHeight, true);
+                    // Desenha Árvore de Baixo
+                    drawTree(ctx, p.x, p.bottomY, this.width, p.bottomHeight, false);
+                }
+            }
+
+            checkCollision(rect1, rect2) {
+                return (rect1.left < rect2.right &&
+                        rect1.right > rect2.left &&
+                        rect1.top < rect2.bottom &&
+                        rect1.bottom > rect2.top);
+            }
+        }
+
+        // ==========================================
+        // Sistemas de FX (Explosões, Partículas, Inversão)
+        // ==========================================
+
+        /**
+         * Checa pontos notáveis (múltiplos de 10 e o easter egg do 67)
+         */
+        function checkMilestones(currentScore) {
+            // Verifica o "Invert Filter" nos 67 pontos exatos
+            if (currentScore === 67 && !invertedMode) {
+                invertedMode = true;
+                gameContainer.classList.add('inverted');
+            }
+
+            // Múltiplos de 10
+            if (currentScore > 0 && currentScore % 10 === 0 && !milestonesHit.has(currentScore)) {
+                milestonesHit.add(currentScore);
+                
+                // Explode texto na tela
+                triggerTextExplosion(currentScore);
+                
+                // Adiciona mais tralha no cenário dinâmico
+                bg.upgradeBackground();
+            }
+        }
+
+        /**
+         * Ativa a animação explosiva CSS com troca de cor
+         */
+        function triggerTextExplosion(pts) {
+            // Remove a classe para resetar a animação caso ela já exista
+            explosionText.classList.remove('exploding');
+            
+            // Força o reflow do DOM para reiniciar a animação CSS imediatamente
+            void explosionText.offsetWidth; 
+            
+            explosionText.innerText = `${pts} PONTOS !!!`;
+            
+            // Define a intensidade da cor. A cada 10 pts pega uma cor do array.
+            let colorIndex = (pts / 10) - 1;
+            if (colorIndex >= EXPLOSION_COLORS.length) colorIndex = EXPLOSION_COLORS.length - 1;
+            
+            explosionText.style.color = EXPLOSION_COLORS[colorIndex];
+            
+            // Adiciona classe que tem o @keyframes
+            explosionText.classList.add('exploding');
+        }
+
+        // ==========================================
+        // Core Game Engine Loop e Eventos
+        // ==========================================
+
+        const cat = new Cat();
+        const treeManager = new TreeManager();
+        const bg = new Background();
+
+        function triggerGameOver() {
+            if (currentState === STATE.GAMEOVER) return;
+            currentState = STATE.GAMEOVER;
+            
+            // Exibe interface de derrota
+            gameOverScreen.style.display = 'flex';
+            restartBtn.style.display = 'none'; // Esconde botão
+
+            // Trava reinício por 3 segundos estritos (pedido do prompt)
+            canRestart = false;
+            setTimeout(() => {
+                canRestart = true;
+                restartBtn.style.display = 'block';
+            }, 3000);
+        }
+
+        function resetGame() {
+            cat.reset();
+            treeManager.reset();
+            score = 0;
+            frames = 0;
+            scoreDisplay.innerText = score;
+            currentState = STATE.START;
+            
+            // Reseta cenário e inversão
+            milestonesHit.clear();
+            bg.level = 0;
+            bg.elements = [];
+            bg.addCloud(50, 100);
+            bg.addCloud(250, 50);
+            bg.addCloud(400, 150);
+            
+            invertedMode = false;
+            gameContainer.classList.remove('inverted');
+            explosionText.classList.remove('exploding');
+
+            startScreen.style.display = 'flex';
+            gameOverScreen.style.display = 'none';
+        }
+
+        function handleInput(e) {
+            // Evita scroll da página ao apertar espaço
+            if (e.type === 'keydown' && e.code === 'Space') {
+                e.preventDefault(); 
+            }
+
+            // Ignora teclado que não seja espaço/cima
+            if (e.type === 'keydown' && e.code !== 'Space' && e.code !== 'ArrowUp') return;
+
+            switch(currentState) {
+                case STATE.START:
+                    currentState = STATE.PLAYING;
+                    startScreen.style.display = 'none';
+                    cat.jump();
+                    break;
+                case STATE.PLAYING:
+                    cat.jump();
+                    break;
+                case STATE.GAMEOVER:
+                    // Se estiver no game over mas ainda não passou os 3s, ignora input da tela.
+                    // O clique do botão é tratado separadamente no evento do próprio botão.
+                    break;
+            }
+        }
+
+        // Listeners de Input Híbrido (Mobile + Desktop)
+        window.addEventListener('keydown', handleInput);
+        canvas.addEventListener('mousedown', handleInput);
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleInput(e); }, {passive: false});
+
+        // Clique explícito no botão de reiniciar
+        restartBtn.addEventListener('click', () => {
+            if (canRestart && currentState === STATE.GAMEOVER) {
+                resetGame();
+            }
+        });
+
+        // Loop Principal
+        function gameLoop() {
+            ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+            bg.update();
+            bg.draw(ctx);
+
+            treeManager.update();
+            treeManager.draw(ctx);
+
+            cat.update();
+            cat.draw(ctx);
+
+            if (currentState === STATE.PLAYING) {
+                frames++;
+            }
+
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        // ==========================================
+        // Inicialização
+        // ==========================================
+        
+        // Seta tipografia top pro canvas ser suave
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        
+        // Inicia
+        gameLoop();
+
+    </script>
+</body>
+</html>
