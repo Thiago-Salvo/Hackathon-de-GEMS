@@ -3,67 +3,864 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cyber Dash</title>
+    <title>CYBER DASH</title>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    
+    <style>
+        /* ==========================================
+           CSS: ESTÉTICA NEON CYBERPUNK
+           ========================================== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            background-color: #050505;
+            color: #fff;
+            font-family: 'Orbitron', sans-serif;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            max-width: 1200px;
+            max-height: 800px;
+            background: #000;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* UI Screens */
+        .screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(5, 5, 10, 0.85);
+            backdrop-filter: blur(5px);
+            z-index: 10;
+            transition: opacity 0.3s ease;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        h1 {
+            font-size: 4rem;
+            color: #0ff;
+            text-shadow: 0 0 10px #0ff, 0 0 20px #0ff, 0 0 40px #0ff;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: #f0f;
+            letter-spacing: 5px;
+            margin-bottom: 40px;
+            text-shadow: 0 0 10px #f0f;
+        }
+
+        h2 {
+            font-size: 3rem;
+            color: #fff;
+            margin-bottom: 30px;
+            text-shadow: 0 0 10px #fff;
+        }
+
+        /* Efeito Glitch Básico */
+        .glitch {
+            position: relative;
+        }
+        .glitch::before, .glitch::after {
+            content: attr(data-text);
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            opacity: 0.8;
+        }
+        .glitch::before {
+            left: 2px;
+            text-shadow: -2px 0 #f0f;
+            animation: glitch-anim 2s infinite linear alternate-reverse;
+        }
+        .glitch::after {
+            left: -2px;
+            text-shadow: -2px 0 #0ff;
+            animation: glitch-anim 3s infinite linear alternate-reverse;
+        }
+        .error { color: #f00; text-shadow: 0 0 10px #f00, 0 0 20px #f00; }
+
+        @keyframes glitch-anim {
+            0% { clip-path: inset(20% 0 80% 0); }
+            20% { clip-path: inset(60% 0 10% 0); }
+            40% { clip-path: inset(40% 0 50% 0); }
+            60% { clip-path: inset(80% 0 5% 0); }
+            80% { clip-path: inset(10% 0 70% 0); }
+            100% { clip-path: inset(30% 0 50% 0); }
+        }
+
+        /* Botões Neon */
+        .neon-button {
+            background: transparent;
+            color: #0ff;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.5rem;
+            font-weight: bold;
+            padding: 15px 40px;
+            border: 2px solid #0ff;
+            border-radius: 5px;
+            cursor: pointer;
+            text-transform: uppercase;
+            box-shadow: 0 0 10px #0ff, inset 0 0 10px rgba(0, 255, 255, 0.3);
+            transition: all 0.2s;
+            margin-bottom: 20px;
+        }
+        .neon-button:hover {
+            background: #0ff;
+            color: #000;
+            box-shadow: 0 0 20px #0ff, 0 0 40px #0ff;
+        }
+        .neon-button.secondary {
+            color: #f0f;
+            border-color: #f0f;
+            box-shadow: 0 0 10px #f0f, inset 0 0 10px rgba(255, 0, 255, 0.3);
+        }
+        .neon-button.secondary:hover {
+            background: #f0f;
+            color: #000;
+            box-shadow: 0 0 20px #f0f, 0 0 40px #f0f;
+        }
+
+        .instructions {
+            margin-top: 30px;
+            text-align: center;
+            color: #aaa;
+            line-height: 1.8;
+        }
+
+        /* HUD */
+        #hud {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .hud-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 1.5rem;
+            text-shadow: 0 0 5px #fff;
+        }
+
+        .hp-container, .dash-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.2rem;
+        }
+
+        .hp-bar, .dash-bar {
+            width: 150px;
+            height: 15px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid #fff;
+            position: relative;
+        }
+
+        #hp-fill {
+            width: 100%; height: 100%; background: #0f0;
+            box-shadow: 0 0 10px #0f0; transition: width 0.2s;
+        }
+
+        #dash-fill {
+            width: 100%; height: 100%; background: #0ff;
+            box-shadow: 0 0 10px #0ff; transition: width 0.1s;
+        }
+
+        /* Dano Visual */
+        #damage-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 0, 0, 0.3);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.1s;
+        }
+        .flash { opacity: 1 !important; }
+
+        /* Mobile Controls */
+        #mobile-controls {
+            position: absolute;
+            bottom: 20px; left: 0; width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20px;
+            pointer-events: auto;
+        }
+
+        .mobile-btn {
+            background: rgba(0, 255, 255, 0.1);
+            border: 2px solid #0ff;
+            color: #0ff;
+            font-family: 'Orbitron', sans-serif;
+            padding: 20px;
+            border-radius: 50%;
+            width: 80px; height: 80px;
+            font-size: 0.8rem;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.4);
+        }
+
+        @media (max-width: 768px) {
+            h1 { font-size: 2.5rem; }
+            .hud-top { font-size: 1rem; }
+            .hp-bar, .dash-bar { width: 100px; }
+            #mobile-controls { display: flex !important; }
+        }
+    </style>
 </head>
 <body>
     <div id="game-container">
         <canvas id="gameCanvas"></canvas>
 
+        <div id="damage-overlay"></div>
+
         <div id="hud" class="hidden">
-            <div class="top-bar">
+            <div class="hud-top">
+                <div class="score-display">SCORE: <span id="score">0</span></div>
                 <div class="hp-container">
-                    <span class="label">SYS_HP:</span>
-                    <div id="hp-bar"><div id="hp-fill"></div></div>
-                </div>
-                <div class="score-container">
-                    <span class="label">SCORE:</span>
-                    <span id="score">0</span>
+                    HP: 
+                    <div class="hp-bar"><div id="hp-fill"></div></div>
                 </div>
             </div>
-            <div class="dash-container">
-                <span class="label">DASH</span>
-                <div id="dash-bar"><div id="dash-fill"></div></div>
+            <div class="hud-bottom">
+                <div class="dash-container">
+                    DASH <div class="dash-bar"><div id="dash-fill"></div></div>
+                </div>
             </div>
         </div>
 
-        <div id="ui-layer">
-            <div id="start-screen" class="screen">
-                <h1 class="glitch" data-text="CYBER DASH">CYBER DASH</h1>
-                <p>Otimize sua rota. Evite a destruição.</p>
-                <div class="instructions">
-                    <p>[ESPAÇO / CLIQUE] = Subir</p>
-                    <p>[SHIFT / BOTÃO] = Dash</p>
-                    <p>[P] = Pause</p>
-                </div>
-                <button id="btn-start" class="neon-button">INICIAR SEQUÊNCIA</button>
-                <p class="high-score">High Score: <span id="hi-score-display">0</span></p>
-            </div>
-
-            <div id="pause-screen" class="screen hidden">
-                <h2 class="neon-text">SISTEMA PAUSADO</h2>
-                <button id="btn-resume" class="neon-button">CONTINUAR</button>
-                <button id="btn-restart-pause" class="neon-button">REINICIAR</button>
-            </div>
-
-            <div id="game-over-screen" class="screen hidden">
-                <h1 class="glitch error" data-text="SYSTEM FAILURE">SYSTEM FAILURE</h1>
-                <div class="stats">
-                    <p>Score Final: <span id="final-score">0</span></p>
-                    <p>High Score: <span id="final-hi-score">0</span></p>
-                </div>
-                <button id="btn-restart" class="neon-button">TENTAR NOVAMENTE</button>
-                <button id="btn-menu" class="neon-button">MENU PRINCIPAL</button>
+        <div id="start-screen" class="screen">
+            <h1 class="glitch" data-text="CYBER DASH">CYBER DASH</h1>
+            <p class="subtitle">SYSTEM READY</p>
+            <button id="btn-start" class="neon-button">PLAY</button>
+            <div class="instructions">
+                <p>Espaço / Clique / Toque = SUBIR</p>
+                <p>Shift / Botão Dash = DASH (Invulnerável)</p>
+                <p>P = PAUSE</p>
             </div>
         </div>
 
-        <div id="mobile-controls">
+        <div id="pause-screen" class="screen hidden">
+            <h2>SYSTEM PAUSED</h2>
+            <button id="btn-resume" class="neon-button">RESUME</button>
+            <button id="btn-menu-pause" class="neon-button secondary">MAIN MENU</button>
+        </div>
+
+        <div id="game-over-screen" class="screen hidden">
+            <h2 class="glitch error" data-text="SYSTEM FAILURE">SYSTEM FAILURE</h2>
+            <p>SCORE: <span id="final-score">0</span></p>
+            <p>HIGH SCORE: <span id="high-score">0</span></p>
+            <button id="btn-restart" class="neon-button">PLAY AGAIN</button>
+            <button id="btn-menu-go" class="neon-button secondary">MAIN MENU</button>
+        </div>
+
+        <div id="mobile-controls" class="hidden">
+            <button id="btn-mobile-jump" class="mobile-btn">JUMP</button>
             <button id="btn-mobile-dash" class="mobile-btn">DASH</button>
-            <button id="btn-mobile-jump" class="mobile-btn">SUBIR</button>
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <script>
+        // ==========================================
+        // JS: MOTOR ENGINE & GAMEPLAY
+        // ==========================================
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let cw, ch;
+        function resizeCanvas() {
+            cw = canvas.width = canvas.parentElement.clientWidth;
+            ch = canvas.height = canvas.parentElement.clientHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        const GAME_STATE = { START: 0, PLAYING: 1, PAUSED: 2, GAMEOVER: 3 };
+
+        // PATCH: Tentativa segura de carregar o High Score
+        let savedHighScore = 0;
+        try {
+            savedHighScore = localStorage.getItem('cyberDashHighScore') || 0;
+        } catch(e) {
+            console.warn("Save local bloqueado pelo navegador. Jogando sem salvar recorde persistente.");
+        }
+
+        const game = {
+            state: GAME_STATE.START,
+            score: 0,
+            highScore: savedHighScore,
+            speedBase: 5,
+            speedMultiplier: 1,
+            frameCount: 0,
+            shakeTime: 0,
+            particles: [],
+            obstacles: [],
+            powerups: [],
+            bgStars: []
+        };
+
+        // Referências UI
+        const ui = {
+            start: document.getElementById('start-screen'),
+            pause: document.getElementById('pause-screen'),
+            gameOver: document.getElementById('game-over-screen'),
+            hud: document.getElementById('hud'),
+            score: document.getElementById('score'),
+            finalScore: document.getElementById('final-score'),
+            highScoreDisplay: document.getElementById('high-score'),
+            hpFill: document.getElementById('hp-fill'),
+            dashFill: document.getElementById('dash-fill'),
+            damageOverlay: document.getElementById('damage-overlay'),
+            container: document.getElementById('game-container')
+        };
+
+        document.getElementById('high-score').innerText = game.highScore;
+
+        // ==========================================
+        // CLASSES (ENTIDADES DO JOGO)
+        // ==========================================
+
+        class Player {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                this.x = cw * 0.2;
+                this.y = ch / 2;
+                this.size = 20;
+                this.vy = 0;
+                this.gravity = 0.4;
+                this.jumpForce = -7;
+                this.maxHp = 3;
+                this.hp = this.maxHp;
+                
+                // Dash mechanics
+                this.dashCooldownMax = 180; // frames
+                this.dashCooldown = 0;
+                this.isDashing = false;
+                this.dashTimer = 0;
+                this.dashDuration = 20;
+                
+                this.invulnerableTimer = 0;
+                this.color = '#0ff';
+            }
+
+            jump() {
+                if (game.state !== GAME_STATE.PLAYING) return;
+                this.vy = this.jumpForce;
+                createParticles(this.x, this.y + this.size, 5, '#fff'); // Thruster effect
+            }
+
+            dash() {
+                if (game.state !== GAME_STATE.PLAYING || this.dashCooldown > 0) return;
+                this.isDashing = true;
+                this.dashTimer = this.dashDuration;
+                this.dashCooldown = this.dashCooldownMax;
+                this.vy = 0; // Estabiliza voo
+                createParticles(this.x, this.y, 20, '#0ff');
+            }
+
+            takeDamage(amount) {
+                if (this.invulnerableTimer > 0 || this.isDashing) return;
+                this.hp -= amount;
+                this.invulnerableTimer = 60; // 1 segundo de i-frames
+                game.shakeTime = 15;
+                
+                // Flash na tela
+                ui.damageOverlay.classList.add('flash');
+                setTimeout(() => ui.damageOverlay.classList.remove('flash'), 100);
+
+                if (this.hp <= 0) gameOver();
+                updateHUD();
+            }
+
+            heal(amount) {
+                this.hp = Math.min(this.maxHp, this.hp + amount);
+                createParticles(this.x, this.y, 15, '#0f0');
+                updateHUD();
+            }
+
+            update() {
+                // Física básica
+                if (!this.isDashing) {
+                    this.vy += this.gravity;
+                    this.y += this.vy;
+                } else {
+                    this.dashTimer--;
+                    // Rastro fantasma durante o dash
+                    if(this.dashTimer % 2 === 0) {
+                        game.particles.push(new GhostTrail(this.x, this.y, this.size, this.color));
+                    }
+                    if (this.dashTimer <= 0) this.isDashing = false;
+                }
+
+                // Limites da tela (Teto e Chão)
+                if (this.y < this.size) { this.y = this.size; this.vy = 0; }
+                if (this.y > ch - this.size) { 
+                    this.y = ch - this.size; 
+                    this.takeDamage(1); 
+                    this.vy = this.jumpForce * 0.8; // Quica no chão
+                }
+
+                // Cooldowns
+                if (this.dashCooldown > 0) this.dashCooldown--;
+                if (this.invulnerableTimer > 0) this.invulnerableTimer--;
+
+                updateHUD();
+            }
+
+            draw() {
+                // Efeito de piscar quando invulnerável
+                if (this.invulnerableTimer > 0 && Math.floor(Date.now() / 100) % 2 === 0) return;
+
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                // Rotação baseada na velocidade Y
+                if (!this.isDashing) ctx.rotate(Math.min(Math.PI / 4, Math.max(-Math.PI / 4, this.vy * 0.1)));
+                
+                // Desenha a Nave/Drone
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.isDashing ? '#fff' : this.color;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.moveTo(this.size, 0); // Bico
+                ctx.lineTo(-this.size, this.size); // Asa inf
+                ctx.lineTo(-this.size * 0.5, 0); // Traseira
+                ctx.lineTo(-this.size, -this.size); // Asa sup
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        class Obstacle {
+            constructor() {
+                this.width = 40 + Math.random() * 30;
+                this.gap = 180 - (game.speedMultiplier * 10); // Gap diminui com o tempo
+                if (this.gap < 100) this.gap = 100;
+                
+                this.yTop = Math.random() * (ch - this.gap - 100) + 50;
+                this.x = cw;
+                this.passed = false;
+                
+                // Variação de obstáculos dinâmicos (Alguns se movem no eixo Y)
+                this.isMoving = Math.random() > 0.7 && game.speedMultiplier > 1.2;
+                this.moveDir = Math.random() > 0.5 ? 1 : -1;
+                this.moveSpeed = 1 + Math.random() * 2;
+            }
+
+            update() {
+                let speed = game.speedBase * game.speedMultiplier;
+                if (player.isDashing) speed *= 2.5; // Mundo move rápido no dash
+                
+                this.x -= speed;
+
+                if (this.isMoving) {
+                    this.yTop += this.moveDir * this.moveSpeed;
+                    if (this.yTop < 50 || this.yTop > ch - this.gap - 50) this.moveDir *= -1;
+                }
+
+                // Pontuação
+                if (!this.passed && this.x + this.width < player.x) {
+                    this.passed = true;
+                    game.score += 10;
+                    ui.score.innerText = game.score;
+                }
+            }
+
+            draw() {
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#f0f';
+                ctx.strokeStyle = '#f0f';
+                ctx.lineWidth = 3;
+                ctx.fillStyle = 'rgba(255, 0, 255, 0.1)';
+
+                // Pilar Superior
+                ctx.beginPath();
+                ctx.rect(this.x, 0, this.width, this.yTop);
+                ctx.fill(); ctx.stroke();
+
+                // Pilar Inferior
+                ctx.beginPath();
+                ctx.rect(this.x, this.yTop + this.gap, this.width, ch - (this.yTop + this.gap));
+                ctx.fill(); ctx.stroke();
+            }
+        }
+
+        class PowerUp {
+            constructor() {
+                this.x = cw;
+                this.y = 100 + Math.random() * (ch - 200);
+                this.radius = 12;
+                this.collected = false;
+                this.type = 'heal'; // Pode expandir para escudo, multiplicador, etc.
+            }
+            update() {
+                let speed = game.speedBase * game.speedMultiplier;
+                if (player.isDashing) speed *= 2.5;
+                this.x -= speed;
+                // Flutuação senoide
+                this.y += Math.sin(game.frameCount * 0.05) * 2;
+            }
+            draw() {
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#0f0';
+                ctx.fillStyle = '#0f0';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Efeitos Visuais
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x; this.y = y;
+                this.vx = (Math.random() - 0.5) * 5;
+                this.vy = (Math.random() - 0.5) * 5;
+                this.life = 1;
+                this.decay = 0.02 + Math.random() * 0.03;
+                this.color = color;
+            }
+            update() {
+                this.x += this.vx; this.y += this.vy;
+                this.life -= this.decay;
+            }
+            draw() {
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, 3, 3);
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        class GhostTrail {
+            constructor(x, y, size, color) {
+                this.x = x; this.y = y; this.size = size; this.color = color;
+                this.life = 0.5;
+            }
+            update() { this.life -= 0.05; }
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.globalAlpha = Math.max(0, this.life);
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(this.size, 0);
+                ctx.lineTo(-this.size, this.size);
+                ctx.lineTo(-this.size * 0.5, 0);
+                ctx.lineTo(-this.size, -this.size);
+                ctx.closePath();
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+
+        // ==========================================
+        // SISTEMA PRINCIPAL
+        // ==========================================
+        const player = new Player();
+
+        function initStarfield() {
+            game.bgStars = [];
+            for(let i=0; i<100; i++) {
+                game.bgStars.push({
+                    x: Math.random() * cw,
+                    y: Math.random() * ch,
+                    size: Math.random() * 2,
+                    speed: Math.random() * 2 + 0.5
+                });
+            }
+        }
+
+        function drawBackground() {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, cw, ch);
+            
+            // Grid Paralaxe Básico
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+            let offsetX = (game.frameCount * (game.speedBase/2)) % 50;
+            for(let i = -offsetX; i < cw; i += 50) {
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, ch); ctx.stroke();
+            }
+
+            // Estrelas/Partículas de fundo
+            ctx.fillStyle = '#fff';
+            game.bgStars.forEach(star => {
+                let speedMult = player.isDashing ? 3 : 1;
+                star.x -= star.speed * speedMult;
+                if(star.x < 0) { star.x = cw; star.y = Math.random() * ch; }
+                ctx.globalAlpha = star.speed / 3;
+                ctx.beginPath(); ctx.arc(star.x, star.y, star.size, 0, Math.PI*2); ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+        }
+
+        function createParticles(x, y, amount, color) {
+            for (let i = 0; i < amount; i++) {
+                game.particles.push(new Particle(x, y, color));
+            }
+        }
+
+        function checkCollisions() {
+            // Retângulo de colisão do player (AABB simplificado)
+            const px = player.x - player.size * 0.5;
+            const py = player.y - player.size * 0.8;
+            const pw = player.size * 1.5;
+            const ph = player.size * 1.6;
+
+            // Obstáculos
+            game.obstacles.forEach(obs => {
+                // Colisão eixo X
+                if (px + pw > obs.x && px < obs.x + obs.width) {
+                    // Colisão Eixo Y (Bateu no topo ou na base)
+                    if (py < obs.yTop || py + ph > obs.yTop + obs.gap) {
+                        player.takeDamage(1);
+                    }
+                }
+            });
+
+            // Powerups
+            game.powerups.forEach(p => {
+                if (!p.collected) {
+                    let dx = player.x - p.x;
+                    let dy = player.y - p.y;
+                    let distance = Math.sqrt(dx*dx + dy*dy);
+                    if (distance < player.size + p.radius) {
+                        p.collected = true;
+                        if (p.type === 'heal') player.heal(1);
+                        game.score += 50; // Bônus
+                    }
+                }
+            });
+        }
+
+        function updateHUD() {
+            // Atualiza barras baseadas na porcentagem
+            let hpPercent = (player.hp / player.maxHp) * 100;
+            ui.hpFill.style.width = `${Math.max(0, hpPercent)}%`;
+            // Muda cor se HP baixo
+            ui.hpFill.style.background = player.hp === 1 ? '#f00' : '#0f0';
+            ui.hpFill.style.boxShadow = player.hp === 1 ? '0 0 10px #f00' : '0 0 10px #0f0';
+
+            let dashPercent = 100 - ((player.dashCooldown / player.dashCooldownMax) * 100);
+            ui.dashFill.style.width = `${dashPercent}%`;
+        }
+
+        // ==========================================
+        // CONTROLE DE FLUXO (LOOP)
+        // ==========================================
+
+        function startGame() {
+            player.reset();
+            game.obstacles = [];
+            game.particles = [];
+            game.powerups = [];
+            game.score = 0;
+            game.frameCount = 0;
+            game.speedMultiplier = 1;
+            game.state = GAME_STATE.PLAYING;
+            
+            ui.start.classList.add('hidden');
+            ui.gameOver.classList.add('hidden');
+            ui.hud.classList.remove('hidden');
+            
+            // Mostra botões mobile se em tela pequena
+            if(window.innerWidth <= 768) ui.mobileControls.classList.remove('hidden');
+
+            initStarfield();
+            updateHUD();
+            ui.score.innerText = game.score;
+        }
+
+        function pauseGame() {
+            if (game.state === GAME_STATE.PLAYING) {
+                game.state = GAME_STATE.PAUSED;
+                ui.pause.classList.remove('hidden');
+            } else if (game.state === GAME_STATE.PAUSED) {
+                game.state = GAME_STATE.PLAYING;
+                ui.pause.classList.add('hidden');
+            }
+        }
+
+        // PATCH: Game Over Seguro
+        function gameOver() {
+            game.state = GAME_STATE.GAMEOVER;
+            if (game.score > game.highScore) {
+                game.highScore = game.score;
+                // Salva o recorde de forma segura
+                try {
+                    localStorage.setItem('cyberDashHighScore', game.highScore);
+                } catch(e) {
+                    console.warn("Não foi possível salvar o novo recorde.");
+                }
+            }
+            
+            createParticles(player.x, player.y, 50, '#f00'); // Explosão da nave
+            
+            ui.hud.classList.add('hidden');
+            ui.gameOver.classList.remove('hidden');
+            ui.finalScore.innerText = game.score;
+            ui.highScoreDisplay.innerText = game.highScore;
+            
+            if(window.innerWidth <= 768) ui.mobileControls.classList.add('hidden');
+        }
+
+        function returnToMenu() {
+            game.state = GAME_STATE.START;
+            ui.pause.classList.add('hidden');
+            ui.gameOver.classList.add('hidden');
+            ui.hud.classList.add('hidden');
+            ui.start.classList.remove('hidden');
+            
+            // Desenha fundo estático para o menu
+            ctx.clearRect(0,0,cw,ch);
+            initStarfield();
+            drawBackground();
+        }
+
+        function gameLoop() {
+            if (game.state === GAME_STATE.PLAYING) {
+                game.frameCount++;
+                
+                // Progressão de Dificuldade
+                if (game.frameCount % 600 === 0) game.speedMultiplier += 0.1;
+
+                // Limpeza de arrays
+                game.obstacles = game.obstacles.filter(obs => obs.x + obs.width > 0);
+                game.particles = game.particles.filter(p => p.life > 0);
+                game.powerups = game.powerups.filter(p => p.x + p.radius > 0 && !p.collected);
+
+                // Spawn de Obstáculos
+                let spawnRate = Math.max(60, 120 - (game.speedMultiplier * 15));
+                if (game.frameCount % Math.floor(spawnRate) === 0) {
+                    game.obstacles.push(new Obstacle());
+                }
+
+                // Spawn de Powerups (ocasional)
+                if (game.frameCount % 800 === 0 && Math.random() > 0.3) {
+                    game.powerups.push(new PowerUp());
+                }
+
+                // Screen Shake Apply
+                if (game.shakeTime > 0) {
+                    ctx.save();
+                    let dx = (Math.random() - 0.5) * 10;
+                    let dy = (Math.random() - 0.5) * 10;
+                    ctx.translate(dx, dy);
+                    game.shakeTime--;
+                }
+
+                drawBackground();
+
+                // Updates & Draws
+                game.obstacles.forEach(obs => { obs.update(); obs.draw(); });
+                game.powerups.forEach(p => { p.update(); p.draw(); });
+                
+                if (player.hp > 0) {
+                    player.update();
+                    player.draw();
+                    checkCollisions();
+                }
+
+                game.particles.forEach(p => { p.update(); p.draw(); });
+
+                // Score Passivo
+                if (game.frameCount % 60 === 0) {
+                    game.score += Math.floor(1 * game.speedMultiplier);
+                    ui.score.innerText = game.score;
+                }
+
+                if (game.shakeTime > 0) ctx.restore();
+
+            } else if (game.state === GAME_STATE.START) {
+                // Fundo animado suave no menu
+                game.frameCount++;
+                drawBackground();
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // ==========================================
+        // EVENT LISTENERS (INPUTS)
+        // ==========================================
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                if (game.state === GAME_STATE.PLAYING) player.jump();
+            }
+            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+                if (game.state === GAME_STATE.PLAYING) player.dash();
+            }
+            if (e.code === 'KeyP') pauseGame();
+        });
+
+        // Suporte a Mouse/Toque no Canvas
+        canvas.addEventListener('mousedown', (e) => {
+            if (game.state === GAME_STATE.PLAYING) player.jump();
+        });
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (game.state === GAME_STATE.PLAYING) player.jump();
+        }, { passive: false });
+
+        // Botões UI
+        document.getElementById('btn-start').addEventListener('click', startGame);
+        document.getElementById('btn-restart').addEventListener('click', startGame);
+        document.getElementById('btn-resume').addEventListener('click', pauseGame);
+        document.getElementById('btn-menu-pause').addEventListener('click', returnToMenu);
+        document.getElementById('btn-menu-go').addEventListener('click', returnToMenu);
+
+        // Controles Mobile Específicos
+        document.getElementById('btn-mobile-jump').addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            player.jump();
+        }, { passive: false });
+        document.getElementById('btn-mobile-dash').addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            player.dash();
+        }, { passive: false });
+        ui.mobileControls = document.getElementById('mobile-controls');
+
+        // INICIAR ENGINE
+        initStarfield();
+        requestAnimationFrame(gameLoop);
+    </script>
 </body>
 </html>
